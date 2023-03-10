@@ -108,6 +108,13 @@ class Runner:
         _override_sigma(player, args)
         player.run()
 
+    def run_analyze(self, args):
+        print('Started to analyze')
+        player = self.create_player()
+        _restore(player, args)
+        _override_sigma(player, args)
+        player.analyze()
+
     def create_player(self):
         return self.player_factory.create(self.algo_name, params=self.params)
 
@@ -121,6 +128,8 @@ class Runner:
             self.run_train(args)
 
         elif args['play']:
-            self.run_play(args)
+            # self.run_play(args)
+            self.run_analyze(args)
+            
         else:
             self.run_train(args)
