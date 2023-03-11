@@ -299,6 +299,8 @@ class BasePlayer(object):
 
         observations = torch.zeros(self.max_steps, self.observation_space.shape[-1], dtype=torch.float32).to(self.device)
         actions = torch.zeros(self.max_steps, self.action_space.shape[-1], dtype=torch.float32).to(self.device)
+        rewards = torch.zeros(self.max_steps, 1, dtype=torch.float32).to(self.device)
+        dones = torch.zeros(self.max_steps, 1, dtype=torch.float32).to(self.device)
         arnn_cell_states = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[0].size(dim=2), dtype=torch.float32).to(self.device)
         arnn_hidden_states = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[1].size(dim=2), dtype=torch.float32).to(self.device)
         crnn_cell_states = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[2].size(dim=2), dtype=torch.float32).to(self.device)
@@ -342,16 +344,10 @@ class BasePlayer(object):
 
                 obses, r, done, info = self.env_step(self.env, action)
                 
-                # print(obses.size())
-                # print(action.size())
-                # print(self.states[0].size())
-                # print(self.states[1].size())
-                # print(observations.size())
-                # print(actions.size())
-                # print(cell_states.size())
-                # print(hidden_states.size())
                 observations[n,:] = obses[0,:]
                 actions[n,:] = action[0,:]
+                rewards[n,:] = r[0]
+                dones[n,:] = done[0]
                 arnn_cell_states[n,:] = torch.squeeze(self.states[0][0,0,:])
                 arnn_hidden_states[n,:] = torch.squeeze(self.states[1][0,0,:])
                 crnn_cell_states[n,:] = torch.squeeze(self.states[2][0,0,:])
@@ -420,6 +416,14 @@ class BasePlayer(object):
         act_np = actions.cpu().numpy()
         act_df = pd.DataFrame(act_np)
         act_df.to_csv('act.csv', index=False)
+
+        rew_np = rewards.cpu().numpy()
+        rew_df = pd.DataFrame(rew_np)
+        rew_df.to_csv('rew.csv', index=False)
+
+        dne_np = dones.cpu().numpy()
+        dne_df = pd.DataFrame(dne_np)
+        dne_df.to_csv('dne.csv', index=False)
 
         acx_np = arnn_cell_states.cpu().numpy()
         acx_df = pd.DataFrame(acx_np)
