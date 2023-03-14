@@ -301,10 +301,10 @@ class BasePlayer(object):
         actions = torch.zeros(self.max_steps, self.action_space.shape[-1], dtype=torch.float32).to(self.device)
         rewards = torch.zeros(self.max_steps, 1, dtype=torch.float32).to(self.device)
         dones = torch.zeros(self.max_steps, 1, dtype=torch.float32).to(self.device)
-        arnn_cell_states = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[0].size(dim=2), dtype=torch.float32).to(self.device)
-        arnn_hidden_states = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[1].size(dim=2), dtype=torch.float32).to(self.device)
-        crnn_cell_states = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[2].size(dim=2), dtype=torch.float32).to(self.device)
-        crnn_hidden_states = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[3].size(dim=2), dtype=torch.float32).to(self.device)
+        arnn_hn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[0].size(dim=2), dtype=torch.float32).to(self.device)
+        arnn_cn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[1].size(dim=2), dtype=torch.float32).to(self.device)
+        crnn_hn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[2].size(dim=2), dtype=torch.float32).to(self.device)
+        crnn_cn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[3].size(dim=2), dtype=torch.float32).to(self.device)
 
         op_agent = getattr(self.env, "create_agent", None)
         if op_agent:
@@ -342,16 +342,17 @@ class BasePlayer(object):
                 else:
                     action = self.get_action(obses, is_deterministic)
 
+
                 obses, r, done, info = self.env_step(self.env, action)
                 
                 observations[n,:] = obses[0,:]
                 actions[n,:] = action[0,:]
                 rewards[n,:] = r[0]
                 dones[n,:] = done[0]
-                arnn_cell_states[n,:] = torch.squeeze(self.states[0][0,0,:])
-                arnn_hidden_states[n,:] = torch.squeeze(self.states[1][0,0,:])
-                crnn_cell_states[n,:] = torch.squeeze(self.states[2][0,0,:])
-                crnn_hidden_states[n,:] = torch.squeeze(self.states[3][0,0,:])
+                arnn_hn[n,:] = torch.squeeze(self.states[0][0,0,:])
+                arnn_cn[n,:] = torch.squeeze(self.states[1][0,0,:])
+                crnn_hn[n,:] = torch.squeeze(self.states[2][0,0,:])
+                crnn_cn[n,:] = torch.squeeze(self.states[3][0,0,:])
                 
                 cr += r
                 steps += 1
@@ -425,24 +426,24 @@ class BasePlayer(object):
         dne_df = pd.DataFrame(dne_np)
         dne_df.to_csv('dne.csv', index=False)
 
-        acx_np = arnn_cell_states.cpu().numpy()
+        acx_np = arnn_cn.cpu().numpy()
         acx_df = pd.DataFrame(acx_np)
         acx_df.to_csv('acx.csv', index=False)
 
-        ahx_np = arnn_hidden_states.cpu().numpy()
+        ahx_np = arnn_hn.cpu().numpy()
         ahx_df = pd.DataFrame(ahx_np)
         ahx_df.to_csv('ahx.csv', index=False)
 
-        ccx_np = crnn_cell_states.cpu().numpy()
+        ccx_np = crnn_cn.cpu().numpy()
         ccx_df = pd.DataFrame(ccx_np)
         ccx_df.to_csv('ccx.csv', index=False)
 
-        chx_np = crnn_hidden_states.cpu().numpy()
+        chx_np = crnn_hn.cpu().numpy()
         chx_df = pd.DataFrame(chx_np)
         chx_df.to_csv('chx.csv', index=False)
 
-        arnn_states = torch.cat((arnn_cell_states, arnn_hidden_states), 1)
-        crnn_states = torch.cat((crnn_cell_states, crnn_hidden_states), 1)
+        arnn_states = torch.cat((arnn_cn, arnn_hn), 1)
+        crnn_states = torch.cat((crnn_cn, crnn_hn), 1)
 
         # arnn = self.model.a2c_network.rnn.rnn
         arnn = self.model.a2c_network.a_rnn.rnn
