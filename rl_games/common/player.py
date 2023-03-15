@@ -297,8 +297,10 @@ class BasePlayer(object):
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
 
-        observations = torch.zeros(self.max_steps, self.observation_space.shape[-1], dtype=torch.float32).to(self.device)
-        actions = torch.zeros(self.max_steps, self.action_space.shape[-1], dtype=torch.float32).to(self.device)
+        obs_dim = self.observation_space.shape[-1] - self.action_space.shape[-1]
+        act_dim = self.action_space.shape[-1]
+        observations = torch.zeros(self.max_steps, obs_dim, dtype=torch.float32).to(self.device) # act are at end of obs
+        actions = torch.zeros(self.max_steps, act_dim, dtype=torch.float32).to(self.device)
         rewards = torch.zeros(self.max_steps, 1, dtype=torch.float32).to(self.device)
         dones = torch.zeros(self.max_steps, 1, dtype=torch.float32).to(self.device)
         arnn_hn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[0].size(dim=2), dtype=torch.float32).to(self.device)
@@ -345,8 +347,8 @@ class BasePlayer(object):
 
                 obses, r, done, info = self.env_step(self.env, action)
                 
-                observations[n,:] = obses[0,:]
-                actions[n,:] = action[0,:]
+                observations[n,:] = obses[0,:obs_dim]
+                actions[n,:] = obses[0,obs_dim:]
                 rewards[n,:] = r[0]
                 dones[n,:] = done[0]
                 arnn_hn[n,:] = torch.squeeze(self.states[0][0,0,:])
