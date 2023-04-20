@@ -1,5 +1,7 @@
 # RL Games: High performance RL library  
 
+Added minimal code to export data (e.g. observations, actions, hidden states).
+
 ## Discord Channel Link 
 * https://discord.gg/hnYRq7DsQh
 
