@@ -1,4 +1,6 @@
+import copy
 import time
+
 import gym
 import numpy as np
 import torch
@@ -7,6 +9,7 @@ from rl_games.common import vecenv
 from rl_games.common import env_configurations
 from rl_games.algos_torch import model_builder
 from rl_games.analysis import fixed_points
+from rl_games.common import env_configurations, vecenv
 
 
 class BasePlayer(object):
@@ -305,8 +308,8 @@ class BasePlayer(object):
         dones = torch.zeros(self.max_steps, 1, dtype=torch.float32).to(self.device)
         arnn_hn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[0].size(dim=2), dtype=torch.float32).to(self.device)
         arnn_cn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[1].size(dim=2), dtype=torch.float32).to(self.device)
-        crnn_hn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[2].size(dim=2), dtype=torch.float32).to(self.device)
-        crnn_cn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[3].size(dim=2), dtype=torch.float32).to(self.device)
+        # crnn_hn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[2].size(dim=2), dtype=torch.float32).to(self.device)
+        # crnn_cn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[3].size(dim=2), dtype=torch.float32).to(self.device)
 
         op_agent = getattr(self.env, "create_agent", None)
         if op_agent:
@@ -353,8 +356,8 @@ class BasePlayer(object):
                 dones[n,:] = done[0]
                 arnn_hn[n,:] = torch.squeeze(self.states[0][0,0,:])
                 arnn_cn[n,:] = torch.squeeze(self.states[1][0,0,:])
-                crnn_hn[n,:] = torch.squeeze(self.states[2][0,0,:])
-                crnn_cn[n,:] = torch.squeeze(self.states[3][0,0,:])
+                # crnn_hn[n,:] = torch.squeeze(self.states[2][0,0,:])
+                # crnn_cn[n,:] = torch.squeeze(self.states[3][0,0,:])
                 
                 cr += r
                 steps += 1
@@ -436,38 +439,38 @@ class BasePlayer(object):
         ahx_df = pd.DataFrame(ahx_np)
         ahx_df.to_csv('ahx.csv', index=False)
 
-        ccx_np = crnn_cn.cpu().numpy()
-        ccx_df = pd.DataFrame(ccx_np)
-        ccx_df.to_csv('ccx.csv', index=False)
+        # ccx_np = crnn_cn.cpu().numpy()
+        # ccx_df = pd.DataFrame(ccx_np)
+        # ccx_df.to_csv('ccx.csv', index=False)
 
-        chx_np = crnn_hn.cpu().numpy()
-        chx_df = pd.DataFrame(chx_np)
-        chx_df.to_csv('chx.csv', index=False)
+        # chx_np = crnn_hn.cpu().numpy()
+        # chx_df = pd.DataFrame(chx_np)
+        # chx_df.to_csv('chx.csv', index=False)
 
-        arnn_states = torch.cat((arnn_cn, arnn_hn), 1)
-        crnn_states = torch.cat((crnn_cn, crnn_hn), 1)
+        # arnn_states = torch.cat((arnn_cn, arnn_hn), 1)
+        # crnn_states = torch.cat((crnn_cn, crnn_hn), 1)
 
         # arnn = self.model.a2c_network.rnn.rnn
         arnn = self.model.a2c_network.a_rnn.rnn
-        crnn = self.model.a2c_network.c_rnn.rnn
+        # crnn = self.model.a2c_network.c_rnn.rnn
 
         # # FIND FIXED POINTS
-        fpf_arnn = fixed_points.FixedPoints(arnn)
-        fpf_crnn = fixed_points.FixedPoints(crnn)
+        # fpf_arnn = fixed_points.FixedPoints(arnn)
+        # fpf_crnn = fixed_points.FixedPoints(crnn)
 
         # # Instantiate the constant input to the RNNs
         constant_inputs = torch.zeros(self.max_steps, arnn.input_size, dtype=torch.float32).to(self.device)
 
         self.model.train()
         # # Find the fixed points
-        fps_arnn = fpf_arnn.find_fixed_points(arnn_states, constant_inputs)
-        fpf_arnn.save_fixed_points('./arnn_fixed_points.json')
+        # fps_arnn = fpf_arnn.find_fixed_points(arnn_states, constant_inputs)
+        # fpf_arnn.save_fixed_points('./arnn_fixed_points.json')
 
-        fps_crnn = fpf_crnn.find_fixed_points(crnn_states, constant_inputs)
-        fpf_crnn.save_fixed_points('./crnn_fixed_points.json')
+        # fps_crnn = fpf_crnn.find_fixed_points(crnn_states, constant_inputs)
+        # fpf_crnn.save_fixed_points('./crnn_fixed_points.json')
 
-        fpf_arnn = fixed_points.FixedPoints(arnn)
-        fpf_crnn = fixed_points.FixedPoints(crnn)
+        # fpf_arnn = fixed_points.FixedPoints(arnn)
+        # fpf_crnn = fixed_points.FixedPoints(crnn)
 
     def get_batch_size(self, obses, batch_size):
         obs_shape = self.obs_shape
