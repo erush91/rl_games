@@ -1,11 +1,12 @@
+import copy
 import time
+
 import gym
 import numpy as np
 import torch
-import copy
-from rl_games.common import vecenv
-from rl_games.common import env_configurations
+
 from rl_games.algos_torch import model_builder
+from rl_games.common import env_configurations, vecenv
 
 
 class BasePlayer(object):
@@ -63,6 +64,7 @@ class BasePlayer(object):
             self.is_deterministic = self.player_config.get(
                 'deterministic', True)
         self.n_game_life = self.player_config.get('n_game_life', 1)
+        self.export_data = self.player_config.get('export_data', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
         self.max_steps = 108000 // 4
@@ -191,6 +193,19 @@ class BasePlayer(object):
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
 
+        obs_dim = self.observation_space.shape[-1] - self.action_space.shape[-1]
+        act_dim = self.action_space.shape[-1]
+        observations = torch.zeros(self.max_steps, obs_dim, dtype=torch.float32).to(self.device) # act are at end of obs
+        actions = torch.zeros(self.max_steps, act_dim, dtype=torch.float32).to(self.device)
+        rewards = torch.zeros(self.max_steps, 1, dtype=torch.float32).to(self.device)
+        dones = torch.zeros(self.max_steps, 1, dtype=torch.float32).to(self.device)
+        arnn_hn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[0].size(dim=2), dtype=torch.float32).to(self.device)
+        arnn_cn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[1].size(dim=2), dtype=torch.float32).to(self.device)
+        crnn_hn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[2].size(dim=2), dtype=torch.float32).to(self.device)
+        crnn_cn = torch.zeros(self.max_steps, self.model.get_default_rnn_state()[3].size(dim=2), dtype=torch.float32).to(self.device)
+
+        agent_id = 2 # 44 # 0 # 1 # 2 # 17F # 48B # 12L # 44R # 13BL
+
         op_agent = getattr(self.env, "create_agent", None)
         if op_agent:
             agent_inited = True
@@ -228,6 +243,17 @@ class BasePlayer(object):
                     action = self.get_action(obses, is_deterministic)
 
                 obses, r, done, info = self.env_step(self.env, action)
+
+                if self.export_data:
+                    observations[n,:] = obses[agent_id,:obs_dim]
+                    actions[n,:] = obses[agent_id,obs_dim:]
+                    rewards[n,:] = r[agent_id]
+                    dones[n,:] = done[agent_id]
+                    arnn_hn[n,:] = torch.squeeze(self.states[0][0,agent_id,:])
+                    arnn_cn[n,:] = torch.squeeze(self.states[1][0,agent_id,:])
+                    crnn_hn[n,:] = torch.squeeze(self.states[2][0,agent_id,:])
+                    crnn_cn[n,:] = torch.squeeze(self.states[3][0,agent_id,:])
+
                 cr += r
                 steps += 1
 
@@ -282,6 +308,49 @@ class BasePlayer(object):
         else:
             print('av reward:', sum_rewards / games_played * n_game_life,
                   'av steps:', sum_steps / games_played * n_game_life)
+
+        if self.export_data:
+            import pandas as pd
+            obs_np = observations.cpu().numpy()
+            obs_df = pd.DataFrame(obs_np)
+            obs_df = obs_df.loc[~(obs_df==0).all(axis=1)]
+            obs_df.to_csv('obs.csv', index=False)
+            act_np = actions.cpu().numpy()
+            act_df = pd.DataFrame(act_np)
+            act_df = act_df.loc[~(act_df==0).all(axis=1)]
+            act_df.to_csv('act.csv', index=False)
+            rew_np = rewards.cpu().numpy()
+            rew_df = pd.DataFrame(rew_np)
+            rew_df = rew_df.loc[~(rew_df==0).all(axis=1)]
+            rew_df.to_csv('rew.csv', index=False)
+            dne_np = dones.cpu().numpy()
+            dne_df = pd.DataFrame(dne_np)
+            dne_df = dne_df.loc[~(dne_df==0).all(axis=1)]
+            dne_df.to_csv('dne.csv', index=False)
+            acx_np = arnn_cn.cpu().numpy()
+            acx_df = pd.DataFrame(acx_np)
+            acx_df = acx_df.loc[~(acx_df==0).all(axis=1)]
+            acx_df.to_csv('acx.csv', index=False)
+            ahx_np = arnn_hn.cpu().numpy()
+            ahx_df = pd.DataFrame(ahx_np)
+            ahx_df = ahx_df.loc[~(ahx_df==0).all(axis=1)]
+            ahx_df.to_csv('ahx.csv', index=False)
+            ccx_np = crnn_cn.cpu().numpy()
+            ccx_df = pd.DataFrame(ccx_np)
+            ccx_df = ccx_df.loc[~(ccx_df==0).all(axis=1)]
+            ccx_df.to_csv('ccx.csv', index=False)
+            chx_np = crnn_hn.cpu().numpy()
+            chx_df = pd.DataFrame(chx_np)
+            chx_df = chx_df.loc[~(chx_df==0).all(axis=1)]
+            chx_df.to_csv('chx.csv', index=False)
+            arnn_states = torch.cat((arnn_cn, arnn_hn), 1)
+            crnn_states = torch.cat((crnn_cn, crnn_hn), 1)
+            # arnn = self.model.a2c_network.rnn.rnn
+            # arnn = self.model.a2c_network.a_rnn.rnn
+            # crnn = self.model.a2c_network.c_rnn.rnn
+            # # Instantiate the constant input to the RNNs
+            # constant_inputs = torch.zeros(self.env.max_episode_length, arnn.input_size, dtype=torch.float32).to(self.device)
+            # self.model.train()
 
     def get_batch_size(self, obses, batch_size):
         obs_shape = self.obs_shape
