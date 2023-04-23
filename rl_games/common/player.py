@@ -244,6 +244,13 @@ class BasePlayer(object):
 
                 obses, r, done, info = self.env_step(self.env, action)
 
+                # print(self.states[0][0,0,:], self.states[1][0,0,:], self.states[2][0,0,:], self.states[3][0,0,:])
+                # self.states[0][0,:,:] += 10 * torch.rand_like(self.states[0][0,:,:])
+                # self.states[1][0,:,:] += 10 * torch.rand_like(self.states[1][0,:,:])
+                # self.states[2][0,:,:] += 10 * torch.rand_like(self.states[2][0,:,:])
+                # self.states[3][0,:,:] += 10 * torch.rand_like(self.states[3][0,:,:])
+
+
                 if self.export_data:
                     observations[n,:] = obses[agent_id,:obs_dim]
                     actions[n,:] = obses[agent_id,obs_dim:]
