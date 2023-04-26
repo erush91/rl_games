@@ -264,8 +264,8 @@ class BasePlayer(object):
                     rewards[n,:,:] = torch.unsqueeze(r[:], dim=1)
                     dones[n,:,:] = torch.unsqueeze(done[:], dim=1)
                     if rnn_type == 'lstm':
-                        arnn_hn[n,:,:] = torch.concat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
-                        crnn_hn[n,:,:] = torch.concat((self.states[2][0,:,:], self.states[3][0,:,:]), dim=1)
+                        arnn_hn[n,:,:] = torch.concat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1) # [lstm hn (short-term memory), lstm cn (long-term memory)]
+                        crnn_hn[n,:,:] = torch.concat((self.states[2][0,:,:], self.states[3][0,:,:]), dim=1) # [lstm hn (short-term memory), lstm cn (long-term memory)]
                     elif rnn_type == 'gru':
                         arnn_hn[n,:,:] = torch.squeeze(self.states[0][0,:,:])
                         crnn_hn[n,:,:] = torch.squeeze(self.states[1][0,:,:])
