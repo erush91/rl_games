@@ -199,12 +199,19 @@ class BasePlayer(object):
         actions = torch.zeros(self.max_steps, self.env.num_environments, act_dim, dtype=torch.float32).to(self.device)
         rewards = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
         dones = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
-        arnn_hn = torch.zeros(self.max_steps, self.env.num_environments, self.model.get_default_rnn_state()[0].size(dim=2), dtype=torch.float32).to(self.device)
-        arnn_cn = torch.zeros(self.max_steps, self.env.num_environments, self.model.get_default_rnn_state()[1].size(dim=2), dtype=torch.float32).to(self.device)
-        crnn_hn = torch.zeros(self.max_steps, self.env.num_environments, self.model.get_default_rnn_state()[2].size(dim=2), dtype=torch.float32).to(self.device)
-        crnn_cn = torch.zeros(self.max_steps, self.env.num_environments, self.model.get_default_rnn_state()[3].size(dim=2), dtype=torch.float32).to(self.device)
+        if len(self.model.get_default_rnn_state()) == 4:
+            rnn_type = 'lstm'
+            arnn_hn_dim = self.model.get_default_rnn_state()[0].size(dim=2) + self.model.get_default_rnn_state()[1].size(dim=2) # [lstm hn (short-term memory), lstm cn (long-term memory)]
+            crnn_hn_dim = self.model.get_default_rnn_state()[2].size(dim=2) + self.model.get_default_rnn_state()[3].size(dim=2) # [lstm hn (short-term memory), lstm cn (long-term memory)]
+        elif len(self.model.get_default_rnn_state()) == 2:
+            rnn_type = 'gru'
+            arnn_hn_dim = self.model.get_default_rnn_state()[0].size(dim=2) # [gru hn]
+            crnn_hn_dim = self.model.get_default_rnn_state()[1].size(dim=2) # [gru hn]
+        else:
+            print("rnn model not supported")
 
-        agent_id = 2 # 44 # 0 # 1 # 2 # 17F # 48B # 12L # 44R # 13BL
+        arnn_hn = torch.zeros(self.max_steps, self.env.num_environments, arnn_hn_dim, dtype=torch.float32).to(self.device)
+        crnn_hn = torch.zeros(self.max_steps, self.env.num_environments, crnn_hn_dim, dtype=torch.float32).to(self.device)
 
         op_agent = getattr(self.env, "create_agent", None)
         if op_agent:
@@ -256,10 +263,14 @@ class BasePlayer(object):
                     actions[n,:,:] = obses[:,obs_dim:]
                     rewards[n,:,:] = torch.unsqueeze(r[:], dim=1)
                     dones[n,:,:] = torch.unsqueeze(done[:], dim=1)
-                    arnn_hn[n,:,:] = torch.squeeze(self.states[0][0,:,:])
-                    arnn_cn[n,:,:] = torch.squeeze(self.states[1][0,:,:])
-                    crnn_hn[n,:,:] = torch.squeeze(self.states[2][0,:,:])
-                    crnn_cn[n,:,:] = torch.squeeze(self.states[3][0,:,:])
+                    if rnn_type == 'lstm':
+                        arnn_hn[n,:,:] = torch.concat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
+                        crnn_hn[n,:,:] = torch.concat((self.states[2][0,:,:], self.states[3][0,:,:]), dim=1)
+                    elif rnn_type == 'gru':
+                        arnn_hn[n,:,:] = torch.squeeze(self.states[0][0,:,:])
+                        crnn_hn[n,:,:] = torch.squeeze(self.states[1][0,:,:])
+                    else:
+                        print("rnn model not supported")
 
                 cr += r
                 steps += 1
@@ -328,7 +339,7 @@ class BasePlayer(object):
         p.mkdir(exist_ok=True)
 
         t0 = 100 # 100 # 500
-        tf = 600 # 600 # 527
+        tf = 500 # 600 # 527
 
         if self.export_data:
             import pandas as pd
@@ -338,9 +349,7 @@ class BasePlayer(object):
                 export_torch2parquet(actions[t0:tf,n,:], 'data/' + f'{n:04d}' + '-' + 'ACT')
                 export_torch2parquet(rewards[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'REW')
                 export_torch2parquet(dones[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'DNE')
-                export_torch2parquet(arnn_cn[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'ACX')
                 export_torch2parquet(arnn_hn[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'AHX')
-                export_torch2parquet(crnn_cn[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'CCX')
                 export_torch2parquet(crnn_hn[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'CHX')
 
                 # act_np = actions.cpu().numpy()
