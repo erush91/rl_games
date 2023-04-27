@@ -67,7 +67,7 @@ class BasePlayer(object):
         self.export_data = self.player_config.get('export_data', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
-        self.max_steps = 1000 # 108000 // 4
+        self.max_steps = 160 # 108000 // 4
         self.device = torch.device(self.device_name)
 
     def load_networks(self, params):
@@ -320,25 +320,25 @@ class BasePlayer(object):
                         break
 
         print(sum_rewards)
-        if print_game_res:
-            print('av reward:', sum_rewards / games_played * n_game_life, 'av steps:', sum_steps /
-                  games_played * n_game_life, 'winrate:', sum_game_res / games_played * n_game_life)
-        else:
-            print('av reward:', sum_rewards / games_played * n_game_life,
-                  'av steps:', sum_steps / games_played * n_game_life)
+        # if print_game_res:
+        #     print('av reward:', sum_rewards / games_played * n_game_life, 'av steps:', sum_steps /
+        #           games_played * n_game_life, 'winrate:', sum_game_res / games_played * n_game_life)
+        # else:
+        #     print('av reward:', sum_rewards / games_played * n_game_life,
+                #   'av steps:', sum_steps / games_played * n_game_life)
 
         def export_torch2parquet(data: torch.Tensor, name: str):
             df = pd.DataFrame(data.cpu().numpy())
             df = df.loc[~(df==0).all(axis=1)]
             df.columns = df.columns.astype(str)
-            df.to_parquet(name + '.parquet', index=False)
+            df.to_csv(name + '.csv', index=False)
 
         from pathlib import Path
 
         p = Path().resolve() / 'data'
         p.mkdir(exist_ok=True)
 
-        t0 = 100 # 100 # 500
+        t0 = 0 # 100 # 500
         tf = 500 # 600 # 527
 
         if self.export_data:
