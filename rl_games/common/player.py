@@ -252,10 +252,10 @@ class BasePlayer(object):
                 obses, r, done, info = self.env_step(self.env, action)
 
                 # print(self.states[0][0,0,:], self.states[1][0,0,:], self.states[2][0,0,:], self.states[3][0,0,:])
-                # self.states[0][0,:,:] += 10 * torch.rand_like(self.states[0][0,:,:])
-                # self.states[1][0,:,:] += 10 * torch.rand_like(self.states[1][0,:,:])
-                # self.states[2][0,:,:] += 10 * torch.rand_like(self.states[2][0,:,:])
-                # self.states[3][0,:,:] += 10 * torch.rand_like(self.states[3][0,:,:])
+                # self.states[0][0,:,:] += 10 * torch.rand_like(self.states[0][0,:,:]) # [actor lstm hn (short-term memory)
+                # self.states[1][0,:,:] += 10 * torch.rand_like(self.states[1][0,:,:]) # [actor lstm cn (long-term memory)
+                # self.states[2][0,:,:] += 10 * torch.rand_like(self.states[2][0,:,:]) # [critic lstm hn (short-term memory)
+                # self.states[3][0,:,:] += 10 * torch.rand_like(self.states[3][0,:,:]) # [critic lstm cn (long-term memory)
 
 
                 if self.export_data:
