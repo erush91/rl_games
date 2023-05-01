@@ -71,7 +71,7 @@ class BasePlayer(object):
         self.export_data = self.player_config.get('export_data', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
-        self.max_steps = 160 # 8000 # 108000 // 4
+        self.max_steps = 1000 # 108000 // 4
         self.device = torch.device(self.device_name)
 
     def load_networks(self, params):
@@ -368,14 +368,13 @@ class BasePlayer(object):
         def export_torch2parquet(data: torch.Tensor, columns: np.array, name: str):
             df = pd.DataFrame(data.cpu().numpy())
             df.columns = columns
-            df.set_index('TIME', inplace=True)
             df.to_csv(name + '.csv')
 
         p = Path().resolve() / 'data'
         p.mkdir(exist_ok=True)
 
-        t0 = 100 # 7500 # 100 # 500
-        tf = 150 # 8000 # 600 # 527
+        t0 = 800 # 100 # 500
+        tf = 999 # 600 # 527
 
         if self.export_data:
 
