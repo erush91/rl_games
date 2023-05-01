@@ -8,6 +8,10 @@ import torch
 from rl_games.algos_torch import model_builder
 from rl_games.common import env_configurations, vecenv
 
+from pathlib import Path
+
+import pandas as pd
+import dask as dd
 
 class BasePlayer(object):
 
@@ -67,7 +71,7 @@ class BasePlayer(object):
         self.export_data = self.player_config.get('export_data', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
-        self.max_steps = 160 # 108000 // 4
+        self.max_steps = 160 # 8000 # 108000 // 4
         self.device = torch.device(self.device_name)
 
     def load_networks(self, params):
@@ -195,10 +199,13 @@ class BasePlayer(object):
 
         obs_dim = self.observation_space.shape[-1] - self.action_space.shape[-1]
         act_dim = self.action_space.shape[-1]
-        observations = torch.zeros(self.max_steps, self.env.num_environments, obs_dim, dtype=torch.float32).to(self.device) # act are at end of obs
-        actions = torch.zeros(self.max_steps, self.env.num_environments, act_dim, dtype=torch.float32).to(self.device)
-        rewards = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
+
+        times = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
         dones = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
+        rewards = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
+        actions = torch.zeros(self.max_steps, self.env.num_environments, act_dim, dtype=torch.float32).to(self.device)
+        observations = torch.zeros(self.max_steps, self.env.num_environments, obs_dim, dtype=torch.float32).to(self.device) # act are at end of obs
+
         if len(self.model.get_default_rnn_state()) == 4:
             rnn_type = 'lstm'
             arnn_hn_dim = self.model.get_default_rnn_state()[0].size(dim=2) + self.model.get_default_rnn_state()[1].size(dim=2) # [lstm hn (short-term memory), lstm cn (long-term memory)]
@@ -223,6 +230,33 @@ class BasePlayer(object):
         if has_masks_func:
             has_masks = self.env.has_action_mask()
 
+        # create column names for pandas DataFrame
+        TIME_COLUMN = np.char.mod('TIME', np.arange(1))
+        DNE_COLUMN = np.char.mod('DNE_RAW_%03d', np.arange(1))
+        REW_COLUMN = np.char.mod('REW_RAW_%03d', np.arange(1))
+        ACT_COLUMNS = np.char.mod('ACT_RAW_%03d', np.arange(act_dim))
+        OBS_COLUMNS = np.char.mod('OBS_RAW_%03d', np.arange(obs_dim))
+        AHX_COLUMNS = np.char.mod('AHX_RAW_%03d', np.arange(arnn_hn_dim))
+        CHX_COLUMNS = np.char.mod('CHX_RAW_%03d', np.arange(crnn_hn_dim))
+
+        if self.config['name'] == "AnymalTerrain":
+            ACT_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_anymalterrain.csv', header=None).values[:,0]
+            OBS_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_anymalterrain.csv', header=None).values[:,0]
+
+        if self.config['name'] == "ShadowHand":
+            ACT_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_shadowhand.csv', header=None).values[:,0]
+            OBS_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_shadowhand.csv', header=None).values[:,0]
+
+        COLUMNS = np.concatenate((
+            TIME_COLUMN,
+            DNE_COLUMN,
+            REW_COLUMN,
+            ACT_COLUMNS,
+            OBS_COLUMNS,
+            AHX_COLUMNS,
+            CHX_COLUMNS)
+        )
+
         need_init_rnn = self.is_rnn
         for _ in range(n_games):
             if games_played >= n_games:
@@ -241,7 +275,7 @@ class BasePlayer(object):
 
             print_game_res = False
 
-            for n in range(self.max_steps):
+            for t in range(self.max_steps):
                 if has_masks:
                     masks = self.env.get_action_mask()
                     action = self.get_masked_action(
@@ -259,16 +293,20 @@ class BasePlayer(object):
 
 
                 if self.export_data:
-                    observations[n,:,:] = obses[:,:obs_dim]
-                    actions[n,:,:] = obses[:,obs_dim:]
-                    rewards[n,:,:] = torch.unsqueeze(r[:], dim=1)
-                    dones[n,:,:] = torch.unsqueeze(done[:], dim=1)
+
+                    time = torch.Tensor([t * self.env.dt]).repeat(self.env.num_environments)
+
+                    times[t,:,:] = torch.unsqueeze(time[:], dim=1)
+                    observations[t,:,:] = obses[:,:obs_dim]
+                    actions[t,:,:] = obses[:,obs_dim:]
+                    rewards[t,:,:] = torch.unsqueeze(r[:], dim=1)
+                    dones[t,:,:] = torch.unsqueeze(done[:], dim=1)
                     if rnn_type == 'lstm':
-                        arnn_hn[n,:,:] = torch.concat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1) # [lstm hn (short-term memory), lstm cn (long-term memory)]
-                        crnn_hn[n,:,:] = torch.concat((self.states[2][0,:,:], self.states[3][0,:,:]), dim=1) # [lstm hn (short-term memory), lstm cn (long-term memory)]
+                        arnn_hn[t,:,:] = torch.concat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1) # [lstm hn (short-term memory), lstm cn (long-term memory)]
+                        crnn_hn[t,:,:] = torch.concat((self.states[2][0,:,:], self.states[3][0,:,:]), dim=1) # [lstm hn (short-term memory), lstm cn (long-term memory)]
                     elif rnn_type == 'gru':
-                        arnn_hn[n,:,:] = torch.squeeze(self.states[0][0,:,:])
-                        crnn_hn[n,:,:] = torch.squeeze(self.states[1][0,:,:])
+                        arnn_hn[t,:,:] = torch.squeeze(self.states[0][0,:,:])
+                        crnn_hn[t,:,:] = torch.squeeze(self.states[1][0,:,:])
                     else:
                         print("rnn model not supported")
 
@@ -327,30 +365,34 @@ class BasePlayer(object):
         #     print('av reward:', sum_rewards / games_played * n_game_life,
                 #   'av steps:', sum_steps / games_played * n_game_life)
 
-        def export_torch2parquet(data: torch.Tensor, name: str):
+        def export_torch2parquet(data: torch.Tensor, columns: np.array, name: str):
             df = pd.DataFrame(data.cpu().numpy())
-            df = df.loc[~(df==0).all(axis=1)]
-            df.columns = df.columns.astype(str)
-            df.to_csv(name + '.csv', index=False)
-
-        from pathlib import Path
+            df.columns = columns
+            df.set_index('TIME', inplace=True)
+            df.to_csv(name + '.csv')
 
         p = Path().resolve() / 'data'
         p.mkdir(exist_ok=True)
 
-        t0 = 0 # 100 # 500
-        tf = 500 # 600 # 527
+        t0 = 100 # 7500 # 100 # 500
+        tf = 150 # 8000 # 600 # 527
 
         if self.export_data:
-            import pandas as pd
-            import dask as dd
-            for n in range(self.env.num_environments):
-                export_torch2parquet(observations[t0:tf,n,:], 'data/' + f'{n:04d}' + '-' + 'OBS')
-                export_torch2parquet(actions[t0:tf,n,:], 'data/' + f'{n:04d}' + '-' + 'ACT')
-                export_torch2parquet(rewards[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'REW')
-                export_torch2parquet(dones[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'DNE')
-                export_torch2parquet(arnn_hn[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'AHX')
-                export_torch2parquet(crnn_hn[t0:tf:,n,:], 'data/' + f'{n:04d}' + '-' + 'CHX')
+
+                DATA = torch.cat(
+                    (
+                        times[t0:tf,:,:].permute(1, 0, 2).contiguous().view(times[t0:tf,:,:].size()[0] * times[t0:tf,:,:].size()[1], times[t0:tf,:,:].size()[2]),
+                        dones[t0:tf,:,:].permute(1, 0, 2).contiguous().view(dones[t0:tf,:,:].size()[0] * dones[t0:tf,:,:].size()[1], dones[t0:tf,:,:].size()[2]),
+                        rewards[t0:tf,:,:].permute(1, 0, 2).contiguous().view(rewards[t0:tf,:,:].size()[0] * rewards[t0:tf,:,:].size()[1], rewards[t0:tf,:,:].size()[2]),
+                        actions[t0:tf,:,:].permute(1, 0, 2).contiguous().view(actions[t0:tf,:,:].size()[0] * actions[t0:tf,:,:].size()[1], actions[t0:tf,:,:].size()[2]),
+                        observations[t0:tf,:,:].permute(1, 0, 2).contiguous().view(observations[t0:tf,:,:].size()[0] * observations[t0:tf,:,:].size()[1], observations[t0:tf,:,:].size()[2]),
+                        arnn_hn[t0:tf,:,:].permute(1, 0, 2).contiguous().view(arnn_hn[t0:tf,:,:].size()[0] * arnn_hn[t0:tf,:,:].size()[1], arnn_hn[t0:tf,:,:].size()[2]),
+                        crnn_hn[t0:tf,:,:].permute(1, 0, 2).contiguous().view(crnn_hn[t0:tf,:,:].size()[0] * crnn_hn[t0:tf,:,:].size()[1], crnn_hn[t0:tf,:,:].size()[2])
+                    ),
+                    axis=1
+                )
+                
+                export_torch2parquet(DATA, COLUMNS, 'data/' + 'RAW_DATA')
 
                 # act_np = actions.cpu().numpy()
                 # act_df = pd.DataFrame(act_np)
