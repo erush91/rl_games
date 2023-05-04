@@ -12,6 +12,7 @@ from rl_games.algos_torch.d2rl import D2RLNet
 from rl_games.algos_torch.sac_helper import  SquashedNormal
 from rl_games.common.layers.recurrent import  GRUWithDones, LSTMWithDones
 
+from collections import OrderedDict
 
 def _create_initializer(func, **kwargs):
     return lambda v : func(v, **kwargs)
@@ -286,7 +287,19 @@ class A2CBuilder(NetworkBuilder):
                 if self.fixed_sigma:
                     sigma_init(self.sigma)
                 else:
-                    sigma_init(self.sigma.weight)  
+                    sigma_init(self.sigma.weight)
+
+            # Set up hooks so I can grab intermediate outputs of the network :)
+            self.selected_out = OrderedDict()
+            self.fhooks = []
+            for i, l in enumerate(list(self._modules.keys())):
+                print(l)
+                self.fhooks.append(getattr(self,l).register_forward_hook(self.forward_hook(l)))
+
+        def forward_hook(self, layer_name):
+            def hook(module, input, output):
+                self.selected_out[layer_name] = output
+            return hook
 
         def forward(self, obs_dict):
             obs = obs_dict['obs']
@@ -363,11 +376,11 @@ class A2CBuilder(NetworkBuilder):
 
                 if self.is_discrete:
                     logits = self.logits(a_out)
-                    return logits, value, states
+                    return logits, value, states, self.selected_out
 
                 if self.is_multi_discrete:
                     logits = [logit(a_out) for logit in self.logits]
-                    return logits, value, states
+                    return logits, value, states, self.selected_out
 
                 if self.is_continuous:
                     mu = self.mu_act(self.mu(a_out))
@@ -376,7 +389,7 @@ class A2CBuilder(NetworkBuilder):
                     else:
                         sigma = self.sigma_act(self.sigma(a_out))
 
-                    return mu, sigma, value, states
+                    return mu, sigma, value, states, self.selected_out
             else:
                 out = obs
                 out = self.actor_cnn(out)
@@ -416,21 +429,21 @@ class A2CBuilder(NetworkBuilder):
                 value = self.value_act(self.value(out))
 
                 if self.central_value:
-                    return value, states
+                    return value, states, self.selected_out
 
                 if self.is_discrete:
                     logits = self.logits(out)
-                    return logits, value, states
+                    return logits, value, states, self.selected_out
                 if self.is_multi_discrete:
                     logits = [logit(out) for logit in self.logits]
-                    return logits, value, states
+                    return logits, value, states, self.selected_out
                 if self.is_continuous:
                     mu = self.mu_act(self.mu(out))
                     if self.fixed_sigma:
                         sigma = self.sigma_act(self.sigma)
                     else:
                         sigma = self.sigma_act(self.sigma(out))
-                    return mu, mu*0 + sigma, value, states
+                    return mu, mu*0 + sigma, value, states, self.selected_out
                     
         def is_separate_critic(self):
             return self.separate

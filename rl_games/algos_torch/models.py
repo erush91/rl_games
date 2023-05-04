@@ -244,7 +244,7 @@ class ModelA2CContinuousLogStd(BaseModel):
             is_train = input_dict.get('is_train', True)
             prev_actions = input_dict.get('prev_actions', None)
             input_dict['obs'] = self.norm_obs(input_dict['obs'])
-            mu, logstd, value, states = self.a2c_network(input_dict)
+            mu, logstd, value, states, layer_out = self.a2c_network(input_dict)
             sigma = torch.exp(logstd)
             distr = torch.distributions.Normal(mu, sigma, validate_args=False)
             if is_train:
@@ -256,7 +256,8 @@ class ModelA2CContinuousLogStd(BaseModel):
                     'entropy' : entropy,
                     'rnn_states' : states,
                     'mus' : mu,
-                    'sigmas' : sigma
+                    'sigmas' : sigma,
+                    'layers_out': layer_out
                 }                
                 return result
             else:
@@ -268,7 +269,8 @@ class ModelA2CContinuousLogStd(BaseModel):
                     'actions' : selected_action,
                     'rnn_states' : states,
                     'mus' : mu,
-                    'sigmas' : sigma
+                    'sigmas' : sigma,
+                    'layers_out' : layer_out
                 }
                 return result
 
@@ -301,17 +303,16 @@ class ModelCentralValue(BaseModel):
             is_train = input_dict.get('is_train', True)
             prev_actions = input_dict.get('prev_actions', None)
             input_dict['obs'] = self.norm_obs(input_dict['obs'])
-            value, states = self.a2c_network(input_dict)
+            value, states, layer_out = self.a2c_network(input_dict)
             if not is_train:
                 value = self.unnorm_value(value)
 
             result = {
                 'values': value,
-                'rnn_states': states
+                'rnn_states': states,
+                'layers_out': layer_out
             }
             return result
-
-
 
 class ModelSACContinuous(BaseModel):
 

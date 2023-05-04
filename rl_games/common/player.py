@@ -53,6 +53,7 @@ class BasePlayer(object):
         self.is_tensor_obses = False
 
         self.states = None
+        self.layers_out = None
         self.player_config = self.config.get('player', {})
         self.use_cuda = True
         self.batch_size = 1
@@ -61,7 +62,7 @@ class BasePlayer(object):
             'central_value_config') is not None
         self.device_name = self.config.get('device_name', 'cuda')
         self.render_env = self.player_config.get('render', False)
-        self.games_num = self.player_config.get('games_num', 2000)
+        self.games_num = self.player_config.get('games_num', 1)
         if 'deterministic' in self.player_config:
             self.is_deterministic = self.player_config['deterministic']
         else:
@@ -200,25 +201,39 @@ class BasePlayer(object):
         obs_dim = self.observation_space.shape[-1] - self.action_space.shape[-1]
         act_dim = self.action_space.shape[-1]
 
+        conditions = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
         times = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
         dones = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
         rewards = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
         actions = torch.zeros(self.max_steps, self.env.num_environments, act_dim, dtype=torch.float32).to(self.device)
         observations = torch.zeros(self.max_steps, self.env.num_environments, obs_dim, dtype=torch.float32).to(self.device) # act are at end of obs
 
+        alstm_hx_dim = 0
+        alstm_cx_dim = 0
+        clstm_hx_dim = 0
+        clstm_cx_dim = 0
+        agru_hx_dim  = 0
+        cgru_hx_dim  = 0
+
         if len(self.model.get_default_rnn_state()) == 4:
             rnn_type = 'lstm'
-            arnn_hn_dim = self.model.get_default_rnn_state()[0].size(dim=2) + self.model.get_default_rnn_state()[1].size(dim=2) # [lstm hn (short-term memory), lstm cn (long-term memory)]
-            crnn_hn_dim = self.model.get_default_rnn_state()[2].size(dim=2) + self.model.get_default_rnn_state()[3].size(dim=2) # [lstm hn (short-term memory), lstm cn (long-term memory)]
+            alstm_hx_dim = self.model.get_default_rnn_state()[0].size(dim=2) # actor lstm hn  (short-term memory)
+            alstm_cx_dim = self.model.get_default_rnn_state()[1].size(dim=2) # actor lstm cn  (long-term memory)
+            clstm_hx_dim = self.model.get_default_rnn_state()[2].size(dim=2) # critic lstm hn (short-term memory)
+            clstm_cx_dim = self.model.get_default_rnn_state()[3].size(dim=2) # critic lstm cn (short-term memory)
         elif len(self.model.get_default_rnn_state()) == 2:
             rnn_type = 'gru'
-            arnn_hn_dim = self.model.get_default_rnn_state()[0].size(dim=2) # [gru hn]
-            crnn_hn_dim = self.model.get_default_rnn_state()[1].size(dim=2) # [gru hn]
+            agru_hx_dim = self.model.get_default_rnn_state()[0].size(dim=2) # gru hn
+            cgru_hx_dim = self.model.get_default_rnn_state()[1].size(dim=2) # gru hn
         else:
             print("rnn model not supported")
 
-        arnn_hn = torch.zeros(self.max_steps, self.env.num_environments, arnn_hn_dim, dtype=torch.float32).to(self.device)
-        crnn_hn = torch.zeros(self.max_steps, self.env.num_environments, crnn_hn_dim, dtype=torch.float32).to(self.device)
+        alstm_hx = torch.zeros(self.max_steps, self.env.num_environments, alstm_hx_dim, dtype=torch.float32).to(self.device)
+        alstm_cx = torch.zeros(self.max_steps, self.env.num_environments, alstm_cx_dim, dtype=torch.float32).to(self.device)
+        clstm_hx = torch.zeros(self.max_steps, self.env.num_environments, clstm_hx_dim, dtype=torch.float32).to(self.device)
+        clstm_cx = torch.zeros(self.max_steps, self.env.num_environments, clstm_cx_dim, dtype=torch.float32).to(self.device)
+        agru_hx = torch.zeros(self.max_steps, self.env.num_environments, agru_hx_dim, dtype=torch.float32).to(self.device)
+        cgru_hx = torch.zeros(self.max_steps, self.env.num_environments, cgru_hx_dim, dtype=torch.float32).to(self.device)
 
         op_agent = getattr(self.env, "create_agent", None)
         if op_agent:
@@ -231,30 +246,40 @@ class BasePlayer(object):
             has_masks = self.env.has_action_mask()
 
         # create column names for pandas DataFrame
+        COND_COLUMN = np.char.mod('CONDITION', np.arange(1))
         TIME_COLUMN = np.char.mod('TIME', np.arange(1))
         DNE_COLUMN = np.char.mod('DNE_RAW_%03d', np.arange(1))
         REW_COLUMN = np.char.mod('REW_RAW_%03d', np.arange(1))
         ACT_COLUMNS = np.char.mod('ACT_RAW_%03d', np.arange(act_dim))
         OBS_COLUMNS = np.char.mod('OBS_RAW_%03d', np.arange(obs_dim))
-        AHX_COLUMNS = np.char.mod('AHX_RAW_%03d', np.arange(arnn_hn_dim))
-        CHX_COLUMNS = np.char.mod('CHX_RAW_%03d', np.arange(crnn_hn_dim))
+        ALSTM_HX_COLUMNS = np.char.mod('ALSTM_HX_RAW_%03d', np.arange(alstm_hx_dim))
+        ALSTM_CX_COLUMNS = np.char.mod('ALSTM_CX_RAW_%03d', np.arange(alstm_cx_dim))
+        CLSTM_HX_COLUMNS = np.char.mod('CLSTM_HX_RAW_%03d', np.arange(clstm_hx_dim))
+        CLSTM_CX_COLUMNS = np.char.mod('CLSTM_CX_RAW_%03d', np.arange(clstm_cx_dim))
+        AGRU_HX_COLUMNS = np.char.mod('AGRU_HX_RAW_%03d', np.arange(agru_hx_dim))
+        CGRU_HX_COLUMNS = np.char.mod('CGRU_HX_RAW_%03d', np.arange(cgru_hx_dim))
 
         if self.config['name'] == "AnymalTerrain":
             ACT_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_anymalterrain.csv', header=None).values[:,0]
             OBS_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_anymalterrain.csv', header=None).values[:,0]
 
-        if self.config['name'] == "ShadowHand":
+        if self.config['name'] == "ShadowHandAsymmLSTM":
             ACT_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_shadowhand.csv', header=None).values[:,0]
             OBS_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_shadowhand.csv', header=None).values[:,0]
 
         COLUMNS = np.concatenate((
+            COND_COLUMN,
             TIME_COLUMN,
             DNE_COLUMN,
             REW_COLUMN,
             ACT_COLUMNS,
             OBS_COLUMNS,
-            AHX_COLUMNS,
-            CHX_COLUMNS)
+            ALSTM_HX_COLUMNS,
+            ALSTM_CX_COLUMNS,
+            CLSTM_HX_COLUMNS,
+            CLSTM_CX_COLUMNS,
+            AGRU_HX_COLUMNS,
+            CGRU_HX_COLUMNS)
         )
 
         need_init_rnn = self.is_rnn
@@ -294,19 +319,23 @@ class BasePlayer(object):
 
                 if self.export_data:
 
+                    condition = torch.arange(self.env.num_environments)
                     time = torch.Tensor([t * self.env.dt]).repeat(self.env.num_environments)
 
+                    conditions[t,:,:] = torch.unsqueeze(condition[:], dim=1)
                     times[t,:,:] = torch.unsqueeze(time[:], dim=1)
                     observations[t,:,:] = obses[:,:obs_dim]
                     actions[t,:,:] = obses[:,obs_dim:]
                     rewards[t,:,:] = torch.unsqueeze(r[:], dim=1)
                     dones[t,:,:] = torch.unsqueeze(done[:], dim=1)
                     if rnn_type == 'lstm':
-                        arnn_hn[t,:,:] = torch.concat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1) # [lstm hn (short-term memory), lstm cn (long-term memory)]
-                        crnn_hn[t,:,:] = torch.concat((self.states[2][0,:,:], self.states[3][0,:,:]), dim=1) # [lstm hn (short-term memory), lstm cn (long-term memory)]
+                        alstm_hx[t,:,:] = torch.squeeze(self.states[0][0,:,:]) # lstm hn (short-term memory)
+                        alstm_cx[t,:,:] = torch.squeeze(self.states[1][0,:,:]) # lstm cn (long-term memory)
+                        clstm_hx[t,:,:] = torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
+                        clstm_cx[t,:,:] = torch.squeeze(self.states[3][0,:,:]) # lstm cn (long-term memory)
                     elif rnn_type == 'gru':
-                        arnn_hn[t,:,:] = torch.squeeze(self.states[0][0,:,:])
-                        crnn_hn[t,:,:] = torch.squeeze(self.states[1][0,:,:])
+                        agru_hx[t,:,:] = torch.squeeze(self.states[0][0,:,:])
+                        cgru_hx[t,:,:] = torch.squeeze(self.states[1][0,:,:])
                     else:
                         print("rnn model not supported")
 
@@ -373,20 +402,25 @@ class BasePlayer(object):
         p = Path().resolve() / 'data'
         p.mkdir(exist_ok=True)
 
-        t0 = 800 # 100 # 500
+        t0 = 0 # 100 # 500
         tf = 999 # 600 # 527
 
         if self.export_data:
 
                 DATA = torch.cat(
                     (
+                        conditions[t0:tf,:,:].permute(1, 0, 2).contiguous().view(conditions[t0:tf,:,:].size()[0] * conditions[t0:tf,:,:].size()[1], conditions[t0:tf,:,:].size()[2]),
                         times[t0:tf,:,:].permute(1, 0, 2).contiguous().view(times[t0:tf,:,:].size()[0] * times[t0:tf,:,:].size()[1], times[t0:tf,:,:].size()[2]),
                         dones[t0:tf,:,:].permute(1, 0, 2).contiguous().view(dones[t0:tf,:,:].size()[0] * dones[t0:tf,:,:].size()[1], dones[t0:tf,:,:].size()[2]),
                         rewards[t0:tf,:,:].permute(1, 0, 2).contiguous().view(rewards[t0:tf,:,:].size()[0] * rewards[t0:tf,:,:].size()[1], rewards[t0:tf,:,:].size()[2]),
                         actions[t0:tf,:,:].permute(1, 0, 2).contiguous().view(actions[t0:tf,:,:].size()[0] * actions[t0:tf,:,:].size()[1], actions[t0:tf,:,:].size()[2]),
                         observations[t0:tf,:,:].permute(1, 0, 2).contiguous().view(observations[t0:tf,:,:].size()[0] * observations[t0:tf,:,:].size()[1], observations[t0:tf,:,:].size()[2]),
-                        arnn_hn[t0:tf,:,:].permute(1, 0, 2).contiguous().view(arnn_hn[t0:tf,:,:].size()[0] * arnn_hn[t0:tf,:,:].size()[1], arnn_hn[t0:tf,:,:].size()[2]),
-                        crnn_hn[t0:tf,:,:].permute(1, 0, 2).contiguous().view(crnn_hn[t0:tf,:,:].size()[0] * crnn_hn[t0:tf,:,:].size()[1], crnn_hn[t0:tf,:,:].size()[2])
+                        alstm_hx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(alstm_hx[t0:tf,:,:].size()[0] * alstm_hx[t0:tf,:,:].size()[1], alstm_hx[t0:tf,:,:].size()[2]),
+                        alstm_cx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(alstm_cx[t0:tf,:,:].size()[0] * alstm_cx[t0:tf,:,:].size()[1], alstm_cx[t0:tf,:,:].size()[2]),
+                        clstm_hx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(clstm_hx[t0:tf,:,:].size()[0] * clstm_hx[t0:tf,:,:].size()[1], clstm_hx[t0:tf,:,:].size()[2]),
+                        clstm_cx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(clstm_cx[t0:tf,:,:].size()[0] * clstm_cx[t0:tf,:,:].size()[1], clstm_cx[t0:tf,:,:].size()[2]),
+                        agru_hx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(agru_hx[t0:tf,:,:].size()[0] * agru_hx[t0:tf,:,:].size()[1], agru_hx[t0:tf,:,:].size()[2]),
+                        cgru_hx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(cgru_hx[t0:tf,:,:].size()[0] * cgru_hx[t0:tf,:,:].size()[1], cgru_hx[t0:tf,:,:].size()[2])
                     ),
                     axis=1
                 )
