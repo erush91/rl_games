@@ -72,7 +72,7 @@ class BasePlayer(object):
         self.export_data = self.player_config.get('export_data', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
-        self.max_steps = 1000 # 108000 // 4
+        self.max_steps = 1501 # 10001 # 1001 # 108000 // 4
         self.device = torch.device(self.device_name)
 
     def load_networks(self, params):
@@ -207,6 +207,7 @@ class BasePlayer(object):
         rewards = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
         actions = torch.zeros(self.max_steps, self.env.num_environments, act_dim, dtype=torch.float32).to(self.device)
         observations = torch.zeros(self.max_steps, self.env.num_environments, obs_dim, dtype=torch.float32).to(self.device) # act are at end of obs
+        foot_forces = torch.zeros(self.max_steps, self.env.num_environments, 4, dtype=torch.float32).to(self.device) # act are at end of obs
 
         alstm_hx_dim = 0
         alstm_cx_dim = 0
@@ -215,12 +216,14 @@ class BasePlayer(object):
         agru_hx_dim  = 0
         cgru_hx_dim  = 0
 
+        torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
+
         if len(self.model.get_default_rnn_state()) == 4:
             rnn_type = 'lstm'
             alstm_hx_dim = self.model.get_default_rnn_state()[0].size(dim=2) # actor lstm hn  (short-term memory)
             alstm_cx_dim = self.model.get_default_rnn_state()[1].size(dim=2) # actor lstm cn  (long-term memory)
-            clstm_hx_dim = self.model.get_default_rnn_state()[2].size(dim=2) # critic lstm hn (short-term memory)
-            clstm_cx_dim = self.model.get_default_rnn_state()[3].size(dim=2) # critic lstm cn (short-term memory)
+            clstm_hx_dim = 256#self.model.get_default_rnn_state()[2].size(dim=2) # critic lstm hn (short-term memory)
+            clstm_cx_dim = 256#self.model.get_default_rnn_state()[3].size(dim=2) # critic lstm cn (short-term memory)
         elif len(self.model.get_default_rnn_state()) == 2:
             rnn_type = 'gru'
             agru_hx_dim = self.model.get_default_rnn_state()[0].size(dim=2) # gru hn
@@ -250,6 +253,7 @@ class BasePlayer(object):
         TIME_COLUMN = np.char.mod('TIME', np.arange(1))
         DNE_COLUMN = np.char.mod('DNE_RAW_%03d', np.arange(1))
         REW_COLUMN = np.char.mod('REW_RAW_%03d', np.arange(1))
+        FT_FORCE_COLUMNS = np.char.mod('FOOT_FORCES_%03d', np.arange(4))
         ACT_COLUMNS = np.char.mod('ACT_RAW_%03d', np.arange(act_dim))
         OBS_COLUMNS = np.char.mod('OBS_RAW_%03d', np.arange(obs_dim))
         ALSTM_HX_COLUMNS = np.char.mod('ALSTM_HX_RAW_%03d', np.arange(alstm_hx_dim))
@@ -272,6 +276,7 @@ class BasePlayer(object):
             TIME_COLUMN,
             DNE_COLUMN,
             REW_COLUMN,
+            FT_FORCE_COLUMNS,
             ACT_COLUMNS,
             OBS_COLUMNS,
             ALSTM_HX_COLUMNS,
@@ -310,6 +315,20 @@ class BasePlayer(object):
 
                 obses, r, done, info = self.env_step(self.env, action)
 
+
+                # for key, value in self.layers_out.items():
+                #     if type(value) is tuple:
+                #         for valuee in value:
+                #             if type(valuee) is tuple:
+                #                 for valueee in valuee:
+                #                     print(key, valueee.size())
+                #             else:
+                #                 print(key, valuee.size())
+                #     else:
+                #         print(key, value.size())
+
+
+
                 # print(self.states[0][0,0,:], self.states[1][0,0,:], self.states[2][0,0,:], self.states[3][0,0,:])
                 # self.states[0][0,:,:] += 10 * torch.rand_like(self.states[0][0,:,:]) # [actor lstm hn (short-term memory)
                 # self.states[1][0,:,:] += 10 * torch.rand_like(self.states[1][0,:,:]) # [actor lstm cn (long-term memory)
@@ -324,6 +343,7 @@ class BasePlayer(object):
 
                     conditions[t,:,:] = torch.unsqueeze(condition[:], dim=1)
                     times[t,:,:] = torch.unsqueeze(time[:], dim=1)
+                    foot_forces[t,:,:] = info['info']
                     observations[t,:,:] = obses[:,:obs_dim]
                     actions[t,:,:] = obses[:,obs_dim:]
                     rewards[t,:,:] = torch.unsqueeze(r[:], dim=1)
@@ -331,8 +351,8 @@ class BasePlayer(object):
                     if rnn_type == 'lstm':
                         alstm_hx[t,:,:] = torch.squeeze(self.states[0][0,:,:]) # lstm hn (short-term memory)
                         alstm_cx[t,:,:] = torch.squeeze(self.states[1][0,:,:]) # lstm cn (long-term memory)
-                        clstm_hx[t,:,:] = torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
-                        clstm_cx[t,:,:] = torch.squeeze(self.states[3][0,:,:]) # lstm cn (long-term memory)
+                        clstm_hx[t,:,:] = self.layers_out['actor_mlp'] # torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
+                        clstm_cx[t,:,:] = self.layers_out['critic_mlp'] # lstm cn (long-term memory)
                     elif rnn_type == 'gru':
                         agru_hx[t,:,:] = torch.squeeze(self.states[0][0,:,:])
                         cgru_hx[t,:,:] = torch.squeeze(self.states[1][0,:,:])
@@ -402,8 +422,8 @@ class BasePlayer(object):
         p = Path().resolve() / 'data'
         p.mkdir(exist_ok=True)
 
-        t0 = 0 # 100 # 500
-        tf = 999 # 600 # 527
+        t0 = 500 # 9500 # 950 # 100 # 500
+        tf = 1500 # 1500 # 10000 # 1000 # 600 # 527
 
         if self.export_data:
 
@@ -413,6 +433,7 @@ class BasePlayer(object):
                         times[t0:tf,:,:].permute(1, 0, 2).contiguous().view(times[t0:tf,:,:].size()[0] * times[t0:tf,:,:].size()[1], times[t0:tf,:,:].size()[2]),
                         dones[t0:tf,:,:].permute(1, 0, 2).contiguous().view(dones[t0:tf,:,:].size()[0] * dones[t0:tf,:,:].size()[1], dones[t0:tf,:,:].size()[2]),
                         rewards[t0:tf,:,:].permute(1, 0, 2).contiguous().view(rewards[t0:tf,:,:].size()[0] * rewards[t0:tf,:,:].size()[1], rewards[t0:tf,:,:].size()[2]),
+                        foot_forces[t0:tf,:,:].permute(1, 0, 2).contiguous().view(foot_forces[t0:tf,:,:].size()[0] * foot_forces[t0:tf,:,:].size()[1], foot_forces[t0:tf,:,:].size()[2]),
                         actions[t0:tf,:,:].permute(1, 0, 2).contiguous().view(actions[t0:tf,:,:].size()[0] * actions[t0:tf,:,:].size()[1], actions[t0:tf,:,:].size()[2]),
                         observations[t0:tf,:,:].permute(1, 0, 2).contiguous().view(observations[t0:tf,:,:].size()[0] * observations[t0:tf,:,:].size()[1], observations[t0:tf,:,:].size()[2]),
                         alstm_hx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(alstm_hx[t0:tf,:,:].size()[0] * alstm_hx[t0:tf,:,:].size()[1], alstm_hx[t0:tf,:,:].size()[2]),
@@ -425,7 +446,7 @@ class BasePlayer(object):
                     axis=1
                 )
                 
-                export_torch2parquet(DATA, COLUMNS, 'data/' + 'RAW_DATA')
+                export_torch2parquet(DATA, COLUMNS, 'data/' + 'RAW_DATA_ALL')
 
                 # act_np = actions.cpu().numpy()
                 # act_df = pd.DataFrame(act_np)
