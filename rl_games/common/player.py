@@ -417,7 +417,7 @@ class BasePlayer(object):
         def export_torch2parquet(data: torch.Tensor, columns: np.array, name: str):
             df = pd.DataFrame(data.cpu().numpy())
             df.columns = columns
-            df.to_csv(name + '.csv')
+            df.to_parquet(name + '.parquet')
 
         p = Path().resolve() / 'data'
         p.mkdir(exist_ok=True)
