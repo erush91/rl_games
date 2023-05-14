@@ -52,6 +52,11 @@ class PPODataset(Dataset):
         rnn_states = self.values_dict['rnn_states']
         input_dict['rnn_states'] = [s[:, gstart:gend, :].contiguous() for s in rnn_states]
 
+        # import numpy as np
+        # import pandas as pd
+        # pd.DataFrame(np.squeeze((self.values_dict['rnn_states'][0].cpu().numpy()))).to_csv('rnn_states_t0.csv')
+        # pd.DataFrame(np.squeeze((input_dict['rnn_states'][0].cpu().numpy()))).to_csv('input_dict_t0.csv')
+
         return input_dict
 
     def _get_item(self, idx):

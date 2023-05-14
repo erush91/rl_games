@@ -13,6 +13,11 @@ from pathlib import Path
 import pandas as pd
 import dask as dd
 
+import sklearn.preprocessing
+
+
+from collections import OrderedDict
+
 class BasePlayer(object):
 
     def __init__(self, params):
@@ -72,7 +77,7 @@ class BasePlayer(object):
         self.export_data = self.player_config.get('export_data', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
-        self.max_steps = 1501 # 10001 # 1001 # 108000 // 4
+        self.max_steps = 1000 # 3001 # 1501 # 10001 # 1001 # 108000 // 4
         self.device = torch.device(self.device_name)
 
     def load_networks(self, params):
@@ -209,34 +214,68 @@ class BasePlayer(object):
         observations = torch.zeros(self.max_steps, self.env.num_environments, obs_dim, dtype=torch.float32).to(self.device) # act are at end of obs
         foot_forces = torch.zeros(self.max_steps, self.env.num_environments, 4, dtype=torch.float32).to(self.device) # act are at end of obs
 
-        alstm_hx_dim = 0
-        alstm_cx_dim = 0
-        clstm_hx_dim = 0
-        clstm_cx_dim = 0
-        agru_hx_dim  = 0
-        cgru_hx_dim  = 0
+        DIM_A_MLP_XX = 0
+        DIM_C_MLP_XX = 0
+        DIM_A_LSTM_HX = 0
+        DIM_A_LSTM_CX = 0
+        DIM_C_LSTM_HX = 0
+        DIM_C_LSTM_CX = 0
+        DIM_A_GRU_HX = 0
+        DIM_C_GRU_HX = 0
 
         torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
 
+        DIM_A_MLP_XX = self.config['network'].network_builder.params['mlp']['units'][-1]
+        DIM_C_MLP_XX = self.config['network'].network_builder.params['mlp']['units'][-1]
+
         if len(self.model.get_default_rnn_state()) == 4:
             rnn_type = 'lstm'
-            alstm_hx_dim = self.model.get_default_rnn_state()[0].size(dim=2) # actor lstm hn  (short-term memory)
-            alstm_cx_dim = self.model.get_default_rnn_state()[1].size(dim=2) # actor lstm cn  (long-term memory)
-            clstm_hx_dim = 256#self.model.get_default_rnn_state()[2].size(dim=2) # critic lstm hn (short-term memory)
-            clstm_cx_dim = 256#self.model.get_default_rnn_state()[3].size(dim=2) # critic lstm cn (short-term memory)
+            DIM_A_LSTM_HX = self.model.get_default_rnn_state()[0].size(dim=2) # actor lstm hn  (short-term memory)
+            DIM_A_LSTM_CX = self.model.get_default_rnn_state()[1].size(dim=2) # actor lstm cn  (long-term memory)
+            DIM_C_LSTM_HX = self.model.get_default_rnn_state()[2].size(dim=2) # self.model.get_default_rnn_state()[2].size(dim=2) # critic lstm hn (short-term memory)
+            DIM_C_LSTM_CX = self.model.get_default_rnn_state()[3].size(dim=2) # self.model.get_default_rnn_state()[3].size(dim=2) # critic lstm cn (short-term memory)
         elif len(self.model.get_default_rnn_state()) == 2:
             rnn_type = 'gru'
-            agru_hx_dim = self.model.get_default_rnn_state()[0].size(dim=2) # gru hn
-            cgru_hx_dim = self.model.get_default_rnn_state()[1].size(dim=2) # gru hn
+            DIM_A_GRU_HX = self.model.get_default_rnn_state()[0].size(dim=2) # gru hn
+            DIM_C_GRU_HX = self.model.get_default_rnn_state()[1].size(dim=2) # gru hn
         else:
             print("rnn model not supported")
+            
+        tensor_specs = OrderedDict([
+            ('ENV', 1),
+            ('TIME', 1),
+            ('DONE', 1),
+            ('REWARD', 1),
+            ('FT_FORCE', 4),
+            ('ACT', act_dim),
+            ('OBS', obs_dim),
+            ('A_MLP_XX', DIM_A_MLP_XX),
+            ('A_LSTM_CX', DIM_A_LSTM_CX),
+            ('A_LSTM_C1X', DIM_A_LSTM_CX),
+            ('A_LSTM_C2X', DIM_A_LSTM_CX),
+            ('A_LSTM_HX', DIM_A_LSTM_CX),
+            ('C_MLP_XX', DIM_C_MLP_XX),
+            ('C_LSTM_CX', DIM_C_LSTM_CX),
+            ('C_LSTM_C1X', DIM_C_LSTM_CX),
+            ('C_LSTM_C2X', DIM_C_LSTM_CX),
+            ('C_LSTM_HX', DIM_C_LSTM_HX),
+            ('A_GRU_HX', DIM_A_GRU_HX),
+            ('C_GRU_HX', DIM_C_GRU_HX),
+        ])
 
-        alstm_hx = torch.zeros(self.max_steps, self.env.num_environments, alstm_hx_dim, dtype=torch.float32).to(self.device)
-        alstm_cx = torch.zeros(self.max_steps, self.env.num_environments, alstm_cx_dim, dtype=torch.float32).to(self.device)
-        clstm_hx = torch.zeros(self.max_steps, self.env.num_environments, clstm_hx_dim, dtype=torch.float32).to(self.device)
-        clstm_cx = torch.zeros(self.max_steps, self.env.num_environments, clstm_cx_dim, dtype=torch.float32).to(self.device)
-        agru_hx = torch.zeros(self.max_steps, self.env.num_environments, agru_hx_dim, dtype=torch.float32).to(self.device)
-        cgru_hx = torch.zeros(self.max_steps, self.env.num_environments, cgru_hx_dim, dtype=torch.float32).to(self.device)
+        N_STEPS = self.max_steps
+        N_ENVS = self.env.num_environments
+        
+        def create_tensor_dict(tensor_specs):
+            tensor_dict = OrderedDict()
+            for key, dim in tensor_specs.items():
+                if dim ==1:
+                    tensor_dict[key] = {'data': torch.zeros((N_STEPS, N_ENVS, dim)), 'cols': [key]}
+                else:
+                    tensor_dict[key] = {'data': torch.zeros((N_STEPS, N_ENVS, dim)), 'cols': np.char.mod('%s_RAW_%%03d' % key, np.arange(dim))}
+            return tensor_dict
+
+        tensor_dict = create_tensor_dict(tensor_specs)
 
         op_agent = getattr(self.env, "create_agent", None)
         if op_agent:
@@ -248,44 +287,72 @@ class BasePlayer(object):
         if has_masks_func:
             has_masks = self.env.has_action_mask()
 
-        # create column names for pandas DataFrame
-        COND_COLUMN = np.char.mod('CONDITION', np.arange(1))
-        TIME_COLUMN = np.char.mod('TIME', np.arange(1))
-        DNE_COLUMN = np.char.mod('DNE_RAW_%03d', np.arange(1))
-        REW_COLUMN = np.char.mod('REW_RAW_%03d', np.arange(1))
-        FT_FORCE_COLUMNS = np.char.mod('FOOT_FORCES_%03d', np.arange(4))
-        ACT_COLUMNS = np.char.mod('ACT_RAW_%03d', np.arange(act_dim))
-        OBS_COLUMNS = np.char.mod('OBS_RAW_%03d', np.arange(obs_dim))
-        ALSTM_HX_COLUMNS = np.char.mod('ALSTM_HX_RAW_%03d', np.arange(alstm_hx_dim))
-        ALSTM_CX_COLUMNS = np.char.mod('ALSTM_CX_RAW_%03d', np.arange(alstm_cx_dim))
-        CLSTM_HX_COLUMNS = np.char.mod('CLSTM_HX_RAW_%03d', np.arange(clstm_hx_dim))
-        CLSTM_CX_COLUMNS = np.char.mod('CLSTM_CX_RAW_%03d', np.arange(clstm_cx_dim))
-        AGRU_HX_COLUMNS = np.char.mod('AGRU_HX_RAW_%03d', np.arange(agru_hx_dim))
-        CGRU_HX_COLUMNS = np.char.mod('CGRU_HX_RAW_%03d', np.arange(cgru_hx_dim))
-
         if self.config['name'] == "AnymalTerrain":
-            ACT_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_anymalterrain.csv', header=None).values[:,0]
-            OBS_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_anymalterrain.csv', header=None).values[:,0]
+            tensor_dict['ACT']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_anymalterrain.csv', header=None).values[:,0]
+            tensor_dict['OBS']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_anymalterrain.csv', header=None).values[:,0]
 
         if self.config['name'] == "ShadowHandAsymmLSTM":
-            ACT_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_shadowhand.csv', header=None).values[:,0]
-            OBS_COLUMNS = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_shadowhand.csv', header=None).values[:,0]
+            tensor_dict['ACT']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_shadowhand.csv', header=None).values[:,0]
+            tensor_dict['OBS']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_shadowhand.csv', header=None).values[:,0]
 
-        COLUMNS = np.concatenate((
-            COND_COLUMN,
-            TIME_COLUMN,
-            DNE_COLUMN,
-            REW_COLUMN,
-            FT_FORCE_COLUMNS,
-            ACT_COLUMNS,
-            OBS_COLUMNS,
-            ALSTM_HX_COLUMNS,
-            ALSTM_CX_COLUMNS,
-            CLSTM_HX_COLUMNS,
-            CLSTM_CX_COLUMNS,
-            AGRU_HX_COLUMNS,
-            CGRU_HX_COLUMNS)
-        )
+        if rnn_type == 'lstm':
+            # actor lstm weights and biases
+            a_w_ih = self.model.a2c_network.a_rnn.rnn.weight_ih_l0.detach()
+            # pd.DataFrame(w_ih.cpu()).to_csv('a_w_ih.csv')
+            a_w_ii = a_w_ih[:128,:]
+            a_w_if = a_w_ih[128:256,:]
+            a_w_ig = a_w_ih[256:384:,:]
+            a_w_io = a_w_ih[384:,:]
+            
+            a_w_hh = self.model.a2c_network.a_rnn.rnn.weight_hh_l0.detach()
+            # pd.DataFrame(w_hh.cpu()).to_csv('a_w_hh.csv')
+            a_w_hi = a_w_hh[:128,:]
+            a_w_hf = a_w_hh[128:256,:]
+            a_w_hg = a_w_hh[256:384:,:]
+            a_w_ho = a_w_hh[384:,:]
+
+            a_b_ih = self.model.a2c_network.a_rnn.rnn.bias_ih_l0.detach()
+            # pd.DataFrame(b_ih.cpu()).to_csv('a_b_ih.csv')
+            a_b_ii = a_b_ih[:128]
+            a_b_if = a_b_ih[128:256]
+            a_b_ig = a_b_ih[256:384:]
+            a_b_io = a_b_ih[384:]
+
+            a_b_hh = self.model.a2c_network.a_rnn.rnn.bias_hh_l0.detach()
+            # pd.DataFrame(b_hh.cpu()).to_csv('a_b_hh.csv')
+            a_b_hi = a_b_hh[:128]
+            a_b_hf = a_b_hh[128:256]
+            a_b_hg = a_b_hh[256:384:]
+            a_b_ho = a_b_hh[384:]
+        
+            # critic lstm weights and biases
+            c_w_ih = self.model.a2c_network.c_rnn.rnn.weight_ih_l0.detach()
+            # pd.DataFrame(w_ih.cpu()).to_csv('c_w_ih.csv')
+            c_w_ii = c_w_ih[:128,:]
+            c_w_if = c_w_ih[128:256,:]
+            c_w_ig = c_w_ih[256:384:,:]
+            c_w_io = c_w_ih[384:,:]
+            
+            c_w_hh = self.model.a2c_network.c_rnn.rnn.weight_hh_l0.detach()
+            # pd.DataFrame(w_hh.cpu()).to_csv('c_w_hh.csv')
+            c_w_hi = c_w_hh[:128,:]
+            c_w_hf = c_w_hh[128:256,:]
+            c_w_hg = c_w_hh[256:384:,:]
+            c_w_ho = c_w_hh[384:,:]
+
+            c_b_ih = self.model.a2c_network.c_rnn.rnn.bias_ih_l0.detach()
+            # pd.DataFrame(b_ih.cpu()).to_csv('c_b_ih.csv')
+            c_b_ii = c_b_ih[:128]
+            c_b_if = c_b_ih[128:256]
+            c_b_ig = c_b_ih[256:384:]
+            c_b_io = c_b_ih[384:]
+
+            c_b_hh = self.model.a2c_network.c_rnn.rnn.bias_hh_l0.detach()
+            # pd.DataFrame(b_hh.cpu()).to_csv('c_b_hh.csv')
+            c_b_hi = c_b_hh[:128]
+            c_b_hf = c_b_hh[128:256]
+            c_b_hg = c_b_hh[256:384:]
+            c_b_ho = c_b_hh[384:]
 
         need_init_rnn = self.is_rnn
         for _ in range(n_games):
@@ -305,13 +372,52 @@ class BasePlayer(object):
 
             print_game_res = False
 
-            for t in range(self.max_steps):
+            for t in range(self.max_steps + 1):
                 if has_masks:
                     masks = self.env.get_action_mask()
                     action = self.get_masked_action(
                         obses, masks, is_deterministic)
                 else:
+
+                    # used in computing internal LSTM states
+                    if rnn_type == 'lstm':
+                        a_h_last = self.states[0][0,:,:] # self.layers_out['a_rnn'][1][0][0,0,:]
+                        a_c_last = self.states[1][0,:,:] # self.layers_out['a_rnn'][1][1][0,0,:]
+                        c_h_last = self.states[2][0,:,:] # self.layers_out['a_rnn'][1][0][0,0,:]
+                        c_c_last = self.states[3][0,:,:] # self.layers_out['a_rnn'][1][1][0,0,:]
+
                     action = self.get_action(obses, is_deterministic)
+                    
+                    # compute internal LSTM states - confirmed that both c1 and c2 contribute, (f != ones) does not forget everything : )
+                    if rnn_type == 'lstm':
+                        x = self.layers_out['actor_mlp']
+                        i = torch.sigmoid(torch.matmul(a_w_ii, x.t()).t() + a_b_ii.repeat(self.env.num_environments, 1) + torch.matmul(a_w_hi, a_h_last.t()).t() + a_b_hi.repeat(self.env.num_environments, 1))
+                        f = torch.sigmoid(torch.matmul(a_w_if, x.t()).t() + a_b_if.repeat(self.env.num_environments, 1) + torch.matmul(a_w_hf, a_h_last.t()).t() + a_b_hf.repeat(self.env.num_environments, 1))
+                        g = torch.sigmoid(torch.matmul(a_w_ig, x.t()).t() + a_b_ig.repeat(self.env.num_environments, 1) + torch.matmul(a_w_hg, a_h_last.t()).t() + a_b_hg.repeat(self.env.num_environments, 1))
+                        o = torch.sigmoid(torch.matmul(a_w_io, x.t()).t() + a_b_io.repeat(self.env.num_environments, 1) + torch.matmul(a_w_ho, a_h_last.t()).t() + a_b_ho.repeat(self.env.num_environments, 1))
+                        c1 = f * a_c_last
+                        c2 = i * g
+                        c = c1 + c2
+                        h = o * torch.tanh(c)
+                        tensor_dict['A_LSTM_C1X']['data'][t,:,:] = c1
+                        tensor_dict['A_LSTM_C2X']['data'][t,:,:] = c2
+
+
+                        x = self.layers_out['critic_mlp']
+                        i = torch.sigmoid(torch.matmul(c_w_ii, x.t()).t() + c_b_ii.repeat(self.env.num_environments, 1) + torch.matmul(c_w_hi, c_h_last.t()).t() + c_b_hi.repeat(self.env.num_environments, 1))
+                        f = torch.sigmoid(torch.matmul(c_w_if, x.t()).t() + c_b_if.repeat(self.env.num_environments, 1) + torch.matmul(c_w_hf, c_h_last.t()).t() + c_b_hf.repeat(self.env.num_environments, 1))
+                        g = torch.sigmoid(torch.matmul(c_w_ig, x.t()).t() + c_b_ig.repeat(self.env.num_environments, 1) + torch.matmul(c_w_hg, c_h_last.t()).t() + c_b_hg.repeat(self.env.num_environments, 1))
+                        o = torch.sigmoid(torch.matmul(c_w_io, x.t()).t() + c_b_io.repeat(self.env.num_environments, 1) + torch.matmul(c_w_ho, c_h_last.t()).t() + c_b_ho.repeat(self.env.num_environments, 1))
+                        c1 = f * c_c_last
+                        c2 = i * g
+                        c = c1 + c2
+                        h = o * torch.tanh(c)
+                        tensor_dict['C_LSTM_C1X']['data'][t,:,:] = c1
+                        tensor_dict['C_LSTM_C2X']['data'][t,:,:] = c2
+                        
+                        # check to see my computations are correct (norm < 1e-7)
+                        # h_error = torch.norm(torch.squeeze(self.states[0][0,0,:])-h)
+                        # c_error = torch.norm(torch.squeeze(self.states[1][0,0,:])-c)
 
                 obses, r, done, info = self.env_step(self.env, action)
 
@@ -339,23 +445,27 @@ class BasePlayer(object):
                 if self.export_data:
 
                     condition = torch.arange(self.env.num_environments)
+                    # condition = torch.arange(self.env.num_environments / 5).repeat(5)
                     time = torch.Tensor([t * self.env.dt]).repeat(self.env.num_environments)
 
-                    conditions[t,:,:] = torch.unsqueeze(condition[:], dim=1)
-                    times[t,:,:] = torch.unsqueeze(time[:], dim=1)
-                    foot_forces[t,:,:] = info['info']
-                    observations[t,:,:] = obses[:,:obs_dim]
-                    actions[t,:,:] = obses[:,obs_dim:]
-                    rewards[t,:,:] = torch.unsqueeze(r[:], dim=1)
-                    dones[t,:,:] = torch.unsqueeze(done[:], dim=1)
+                    tensor_dict['ENV']['data'][t,:,:] = torch.unsqueeze(condition[:], dim=1)
+                    tensor_dict['TIME']['data'][t,:,:] = torch.unsqueeze(time[:], dim=1)
+                    tensor_dict['FT_FORCE']['data'][t,:,:] = info['info']
+                    tensor_dict['OBS']['data'][t,:,:] = obses[:,:obs_dim]
+                    tensor_dict['ACT']['data'][t,:,:] = obses[:,obs_dim:]
+                    tensor_dict['REWARD']['data'][t,:,:] = torch.unsqueeze(r[:], dim=1)
+                    tensor_dict['DONE']['data'][t,:,:] = torch.unsqueeze(done[:], dim=1)
+
+                    tensor_dict['A_MLP_XX']['data'][t,:,:] = self.layers_out['actor_mlp'] # torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
+                    tensor_dict['C_MLP_XX']['data'][t,:,:] = self.layers_out['critic_mlp'] # lstm cn (long-term memory)
                     if rnn_type == 'lstm':
-                        alstm_hx[t,:,:] = torch.squeeze(self.states[0][0,:,:]) # lstm hn (short-term memory)
-                        alstm_cx[t,:,:] = torch.squeeze(self.states[1][0,:,:]) # lstm cn (long-term memory)
-                        clstm_hx[t,:,:] = self.layers_out['actor_mlp'] # torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
-                        clstm_cx[t,:,:] = self.layers_out['critic_mlp'] # lstm cn (long-term memory)
+                        tensor_dict['A_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:]) # lstm hn (short-term memory)
+                        tensor_dict['A_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:]) # lstm cn (long-term memory)
+                        tensor_dict['C_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
+                        tensor_dict['C_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[3][0,:,:]) # lstm cn (long-term memory)
                     elif rnn_type == 'gru':
-                        agru_hx[t,:,:] = torch.squeeze(self.states[0][0,:,:])
-                        cgru_hx[t,:,:] = torch.squeeze(self.states[1][0,:,:])
+                        tensor_dict['A_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:])
+                        tensor_dict['C_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:])
                     else:
                         print("rnn model not supported")
 
@@ -417,74 +527,60 @@ class BasePlayer(object):
         def export_torch2parquet(data: torch.Tensor, columns: np.array, name: str):
             df = pd.DataFrame(data.cpu().numpy())
             df.columns = columns
-            df.to_parquet(name + '.parquet')
+            df.to_csv(name + '.csv')
 
-        p = Path().resolve() / 'data'
-        p.mkdir(exist_ok=True)
-
-        t0 = 500 # 9500 # 950 # 100 # 500
-        tf = 1500 # 1500 # 10000 # 1000 # 600 # 527
+        t0 = 400 # 1000 # 500 # 9500 # 950 # 100 # 500
+        tf = 900 # 3000 # 1500 # 1500 # 10000 # 1000 # 600 # 527
 
         if self.export_data:
+            
+            def extract_tensor_data(tensor_dict_entry: dict, t0: int, tf: int) -> pd.DataFrame:
+                tensor = tensor_dict_entry['data']
+                columns = tensor_dict_entry['cols']
+                data = tensor[t0:tf,:,:].permute(1, 0, 2).contiguous().view(tensor[t0:tf,:,:].size()[0] * tensor[t0:tf,:,:].size()[1], tensor[t0:tf,:,:].size()[2])
+                df = pd.DataFrame(data.cpu().numpy(), columns=columns)
+                return df
 
-                DATA = torch.cat(
-                    (
-                        conditions[t0:tf,:,:].permute(1, 0, 2).contiguous().view(conditions[t0:tf,:,:].size()[0] * conditions[t0:tf,:,:].size()[1], conditions[t0:tf,:,:].size()[2]),
-                        times[t0:tf,:,:].permute(1, 0, 2).contiguous().view(times[t0:tf,:,:].size()[0] * times[t0:tf,:,:].size()[1], times[t0:tf,:,:].size()[2]),
-                        dones[t0:tf,:,:].permute(1, 0, 2).contiguous().view(dones[t0:tf,:,:].size()[0] * dones[t0:tf,:,:].size()[1], dones[t0:tf,:,:].size()[2]),
-                        rewards[t0:tf,:,:].permute(1, 0, 2).contiguous().view(rewards[t0:tf,:,:].size()[0] * rewards[t0:tf,:,:].size()[1], rewards[t0:tf,:,:].size()[2]),
-                        foot_forces[t0:tf,:,:].permute(1, 0, 2).contiguous().view(foot_forces[t0:tf,:,:].size()[0] * foot_forces[t0:tf,:,:].size()[1], foot_forces[t0:tf,:,:].size()[2]),
-                        actions[t0:tf,:,:].permute(1, 0, 2).contiguous().view(actions[t0:tf,:,:].size()[0] * actions[t0:tf,:,:].size()[1], actions[t0:tf,:,:].size()[2]),
-                        observations[t0:tf,:,:].permute(1, 0, 2).contiguous().view(observations[t0:tf,:,:].size()[0] * observations[t0:tf,:,:].size()[1], observations[t0:tf,:,:].size()[2]),
-                        alstm_hx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(alstm_hx[t0:tf,:,:].size()[0] * alstm_hx[t0:tf,:,:].size()[1], alstm_hx[t0:tf,:,:].size()[2]),
-                        alstm_cx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(alstm_cx[t0:tf,:,:].size()[0] * alstm_cx[t0:tf,:,:].size()[1], alstm_cx[t0:tf,:,:].size()[2]),
-                        clstm_hx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(clstm_hx[t0:tf,:,:].size()[0] * clstm_hx[t0:tf,:,:].size()[1], clstm_hx[t0:tf,:,:].size()[2]),
-                        clstm_cx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(clstm_cx[t0:tf,:,:].size()[0] * clstm_cx[t0:tf,:,:].size()[1], clstm_cx[t0:tf,:,:].size()[2]),
-                        agru_hx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(agru_hx[t0:tf,:,:].size()[0] * agru_hx[t0:tf,:,:].size()[1], agru_hx[t0:tf,:,:].size()[2]),
-                        cgru_hx[t0:tf,:,:].permute(1, 0, 2).contiguous().view(cgru_hx[t0:tf,:,:].size()[0] * cgru_hx[t0:tf,:,:].size()[1], cgru_hx[t0:tf,:,:].size()[2])
-                    ),
-                    axis=1
-                )
-                
-                export_torch2parquet(DATA, COLUMNS, 'data/' + 'RAW_DATA_ALL')
+            # Extract the data from all tensors and concatenate into a single dataframe
+            data_frames = [extract_tensor_data(v, t0, tf) for v in tensor_dict.values()]
+            all_data = pd.concat(data_frames, axis=1)
 
-                # act_np = actions.cpu().numpy()
-                # act_df = pd.DataFrame(act_np)
-                # act_df = act_df.loc[~(act_df==0).all(axis=1)]
-                # act_df.to_parquet('act.parquet', index=False)
-                # rew_np = rewards.cpu().numpy()
-                # rew_df = pd.DataFrame(rew_np)
-                # rew_df = rew_df.loc[~(rew_df==0).all(axis=1)]
-                # rew_df.to_parquet('rew.parquet', index=False)
-                # dne_np = dones.cpu().numpy()
-                # dne_df = pd.DataFrame(dne_np)
-                # dne_df = dne_df.loc[~(dne_df==0).all(axis=1)]
-                # dne_df.to_parquet('dne.parquet', index=False)
-                # acx_np = arnn_cn.cpu().numpy()
-                # acx_df = pd.DataFrame(acx_np)
-                # acx_df = acx_df.loc[~(acx_df==0).all(axis=1)]
-                # acx_df.to_parquet('acx.parquet', index=False)
-                # ahx_np = arnn_hn.cpu().numpy()
-                # ahx_df = pd.DataFrame(ahx_np)
-                # ahx_df = ahx_df.loc[~(ahx_df==0).all(axis=1)]
-                # ahx_df.to_parquet('ahx.parquet', index=False)
-                # ccx_np = crnn_cn.cpu().numpy()
-                # ccx_df = pd.DataFrame(ccx_np)
-                # ccx_df = ccx_df.loc[~(ccx_df==0).all(axis=1)]
-                # ccx_df.to_parquet('ccx.parquet', index=False)
-                # chx_np = crnn_hn.cpu().numpy()
-                # chx_df = pd.DataFrame(chx_np)
-                # chx_df = chx_df.loc[~(chx_df==0).all(axis=1)]
-                # chx_df.to_parquet('chx.parquet', index=False)
+            p = Path().resolve() / 'data'
+            p.mkdir(exist_ok=True)
 
-                # arnn_states = torch.cat((arnn_cn, arnn_hn), 1)
-                # crnn_states = torch.cat((crnn_cn, crnn_hn), 1)
-                # arnn = self.model.a2c_network.rnn.rnn
-                # arnn = self.model.a2c_network.a_rnn.rnn
-                # crnn = self.model.a2c_network.c_rnn.rnn
-                # # Instantiate the constant input to the RNNs
-                # constant_inputs = torch.zeros(self.env.max_episode_length, arnn.input_size, dtype=torch.float32).to(self.device)
-                # self.model.train()
+            # Save the dataframe to a CSV file
+            all_data.to_csv(str(p / 'RAW_DATA.csv'), index=False)
+
+            # Normalize the data!
+            scaler = sklearn.preprocessing.StandardScaler()
+            scaled_data_frames = []
+            for v in tensor_dict.values():
+                if v['data'].shape[-1] > 4:  # Only scale tensors with dim > 4
+                    df = extract_tensor_data(v, t0, tf)
+                    df_scaled = pd.DataFrame(scaler.fit_transform(df), columns=df.columns)
+                    scaled_data_frames.append(df_scaled)
+                else:
+                    scaled_data_frames.append(extract_tensor_data(v, t0, tf))  # Don't scale tensors with dim <=4
+
+            all_data_scaled = pd.concat(scaled_data_frames, axis=1)
+            all_data_scaled.to_csv(str(p / 'NORM_DATA.csv'), index=False)
+
+            # # Normalize and save tensors not present in the scaling blocklist
+            # scaler = StandardScaler()
+            # scaled_data_frames = []
+            # for k, v in tensor_dict.items():
+            #     if k not in scaling_blocklist:
+            #         df = extract_tensor_data(v, t0, tf)
+            #         df_scaled = pd.DataFrame(scaler.fit_transform(df), columns=df.columns)
+            #         scaled_data_frames.append(df_scaled)
+            #     else:
+            #         scaled_data_frames.append(extract_tensor_data(v, t0, tf))
+
+            # all_data_scaled = pd.concat(scaled_data_frames, axis=1)
+            # all_data_scaled.to_csv(str(p / 'NORM_DATA.csv'), index=False)
+
+
+            # export_torch2parquet(DATA, COLUMNS, 'data/' + 'RAW_DATA')
 
     def get_batch_size(self, obses, batch_size):
         obs_shape = self.obs_shape

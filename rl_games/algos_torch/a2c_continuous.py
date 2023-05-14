@@ -138,8 +138,8 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
 
         # Zero out the weights so that actions from the obs_buf don't feed into the actor_mlp+a_rnn (remove that input, inspired from Saxena's paper) TODO: move to a better place and add a parameter that controls this.
         with torch.no_grad():
-            # self.model.a2c_network.actor_mlp[0].weight[:,176:] = torch.nn.Parameter(torch.zeros([512,12], dtype=torch.float, device="cuda")) # Anymal
-            self.model.a2c_network.actor_mlp[0].weight[:,22:] = torch.nn.Parameter(torch.zeros([512,20], dtype=torch.float, device="cuda")) # ShadowHand
+            self.model.a2c_network.actor_mlp[0].weight[:,176:] = torch.nn.Parameter(torch.zeros([512,12], dtype=torch.float, device="cuda")) # Anymal
+            # self.model.a2c_network.actor_mlp[0].weight[:,22:] = torch.nn.Parameter(torch.zeros([512,20], dtype=torch.float, device="cuda")) # ShadowHand
 
         self.scaler.scale(loss).backward()
         #TODO: Refactor this ugliest code of they year
