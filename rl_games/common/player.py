@@ -1,5 +1,7 @@
 import copy
 import time
+import datetime
+import os
 
 import gym
 import numpy as np
@@ -203,16 +205,8 @@ class BasePlayer(object):
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
 
-        obs_dim = self.observation_space.shape[-1] - self.action_space.shape[-1]
-        act_dim = self.action_space.shape[-1]
-
-        conditions = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
-        times = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
-        dones = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
-        rewards = torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
-        actions = torch.zeros(self.max_steps, self.env.num_environments, act_dim, dtype=torch.float32).to(self.device)
-        observations = torch.zeros(self.max_steps, self.env.num_environments, obs_dim, dtype=torch.float32).to(self.device) # act are at end of obs
-        foot_forces = torch.zeros(self.max_steps, self.env.num_environments, 4, dtype=torch.float32).to(self.device) # act are at end of obs
+        DIM_OBS = self.observation_space.shape[-1] # - self.action_space.shape[-1]
+        DIM_ACT = self.action_space.shape[-1]
 
         DIM_A_MLP_XX = 0
         DIM_C_MLP_XX = 0
@@ -247,8 +241,8 @@ class BasePlayer(object):
             ('DONE', 1),
             ('REWARD', 1),
             ('FT_FORCE', 4),
-            ('ACT', act_dim),
-            ('OBS', obs_dim),
+            ('ACT', DIM_ACT),
+            ('OBS', DIM_OBS),
             ('A_MLP_XX', DIM_A_MLP_XX),
             ('A_LSTM_CX', DIM_A_LSTM_CX),
             ('A_LSTM_C1X', DIM_A_LSTM_CX),
@@ -451,8 +445,8 @@ class BasePlayer(object):
                     tensor_dict['ENV']['data'][t,:,:] = torch.unsqueeze(condition[:], dim=1)
                     tensor_dict['TIME']['data'][t,:,:] = torch.unsqueeze(time[:], dim=1)
                     tensor_dict['FT_FORCE']['data'][t,:,:] = info['info']
-                    tensor_dict['OBS']['data'][t,:,:] = obses[:,:obs_dim]
-                    tensor_dict['ACT']['data'][t,:,:] = obses[:,obs_dim:]
+                    tensor_dict['OBS']['data'][t,:,:] = obses
+                    tensor_dict['ACT']['data'][t,:,:] = action
                     tensor_dict['REWARD']['data'][t,:,:] = torch.unsqueeze(r[:], dim=1)
                     tensor_dict['DONE']['data'][t,:,:] = torch.unsqueeze(done[:], dim=1)
 
@@ -545,25 +539,51 @@ class BasePlayer(object):
             data_frames = [extract_tensor_data(v, t0, tf) for v in tensor_dict.values()]
             all_data = pd.concat(data_frames, axis=1)
 
-            p = Path().resolve() / 'data'
+            # generate a folder to save data in
+            current_datetime = datetime.datetime.now()
+
+            # Create a folder name using the current date and time
+            date_str = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
+            exp_str = f"_u[\
+                {self.env.specified_command_x_range[0]},\
+                {self.env.specified_command_x_range[1]},\
+                {self.env.specified_command_x_no}]_v[\
+                {self.env.specified_command_y_range[0]},\
+                {self.env.specified_command_y_range[1]},\
+                {self.env.specified_command_y_no}]_r[\
+                {self.env.specified_command_yawrate_range[0]},\
+                {self.env.specified_command_yawrate_range[1]},\
+                {self.env.specified_command_yawrate_no}]_n[\
+                {self.env.specified_command_no_copies}]"
+            
+            # Remove the spaces from the string
+            exp_str = exp_str.replace(' ', '')
+            
+            # create folder
+            p = date_str + exp_str
+            p = Path().resolve() / 'data' / p
             p.mkdir(exist_ok=True)
 
             # Save the dataframe to a CSV file
-            all_data.to_csv(str(p / 'RAW_DATA.csv'), index=False)
+            all_data.to_parquet(str(p / 'RAW_DATA.parquet'))
 
-            # Normalize the data!
-            scaler = sklearn.preprocessing.StandardScaler()
-            scaled_data_frames = []
-            for v in tensor_dict.values():
-                if v['data'].shape[-1] > 4:  # Only scale tensors with dim > 4
-                    df = extract_tensor_data(v, t0, tf)
-                    df_scaled = pd.DataFrame(scaler.fit_transform(df), columns=df.columns)
-                    scaled_data_frames.append(df_scaled)
-                else:
-                    scaled_data_frames.append(extract_tensor_data(v, t0, tf))  # Don't scale tensors with dim <=4
+            # export the model used for data collection
+            with open(p.joinpath('model.txt'), 'w') as file:
+                file.write(self.config['name'])
 
-            all_data_scaled = pd.concat(scaled_data_frames, axis=1)
-            all_data_scaled.to_csv(str(p / 'NORM_DATA.csv'), index=False)
+            # # Normalize the data!
+            # scaler = sklearn.preprocessing.StandardScaler()
+            # scaled_data_frames = []
+            # for v in tensor_dict.values():
+            #     if v['data'].shape[-1] > 4:  # Only scale tensors with dim > 4
+            #         df = extract_tensor_data(v, t0, tf)
+            #         df_scaled = pd.DataFrame(scaler.fit_transform(df), columns=df.columns)
+            #         scaled_data_frames.append(df_scaled)
+            #     else:
+            #         scaled_data_frames.append(extract_tensor_data(v, t0, tf))  # Don't scale tensors with dim <=4
+
+            # all_data_scaled = pd.concat(scaled_data_frames, axis=1)
+            # all_data_scaled.to_csv(str(p / 'NORM_DATAA.csv'), index=False)
 
             # # Normalize and save tensors not present in the scaling blocklist
             # scaler = StandardScaler()
