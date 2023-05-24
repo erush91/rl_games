@@ -205,7 +205,7 @@ class BasePlayer(object):
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
 
-        DIM_OBS = self.observation_space.shape[-1] # - self.action_space.shape[-1]
+        DIM_OBS = self.observation_space.shape[-1] - 12 # - self.action_space.shape[-1]
         DIM_ACT = self.action_space.shape[-1]
 
         DIM_A_MLP_XX = 0
@@ -445,7 +445,7 @@ class BasePlayer(object):
                     tensor_dict['ENV']['data'][t,:,:] = torch.unsqueeze(condition[:], dim=1)
                     tensor_dict['TIME']['data'][t,:,:] = torch.unsqueeze(time[:], dim=1)
                     tensor_dict['FT_FORCE']['data'][t,:,:] = info['info']
-                    tensor_dict['OBS']['data'][t,:,:] = obses
+                    tensor_dict['OBS']['data'][t,:,:] = obses[:,:DIM_OBS]
                     tensor_dict['ACT']['data'][t,:,:] = action
                     tensor_dict['REWARD']['data'][t,:,:] = torch.unsqueeze(r[:], dim=1)
                     tensor_dict['DONE']['data'][t,:,:] = torch.unsqueeze(done[:], dim=1)
