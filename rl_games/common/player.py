@@ -205,8 +205,8 @@ class BasePlayer(object):
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
 
-        DIM_OBS = self.observation_space.shape[-1] - 12 # - self.action_space.shape[-1]
         DIM_ACT = self.action_space.shape[-1]
+        DIM_OBS = self.observation_space.shape[-1] - DIM_ACT # - self.action_space.shape[-1]
 
         DIM_A_MLP_XX = 0
         DIM_C_MLP_XX = 0
@@ -377,8 +377,8 @@ class BasePlayer(object):
                     if rnn_type == 'lstm':
                         a_h_last = self.states[0][0,:,:] # self.layers_out['a_rnn'][1][0][0,0,:]
                         a_c_last = self.states[1][0,:,:] # self.layers_out['a_rnn'][1][1][0,0,:]
-                        c_h_last = self.states[2][0,:,:] # self.layers_out['a_rnn'][1][0][0,0,:]
-                        c_c_last = self.states[3][0,:,:] # self.layers_out['a_rnn'][1][1][0,0,:]
+                        c_h_last = self.states[2][0,:,:] # self.layers_out['c_rnn'][1][0][0,0,:]
+                        c_c_last = self.states[3][0,:,:] # self.layers_out['c_rnn'][1][1][0,0,:]
 
                     action = self.get_action(obses, is_deterministic)
                     
@@ -387,7 +387,7 @@ class BasePlayer(object):
                         x = self.layers_out['actor_mlp']
                         i = torch.sigmoid(torch.matmul(a_w_ii, x.t()).t() + a_b_ii.repeat(self.env.num_environments, 1) + torch.matmul(a_w_hi, a_h_last.t()).t() + a_b_hi.repeat(self.env.num_environments, 1))
                         f = torch.sigmoid(torch.matmul(a_w_if, x.t()).t() + a_b_if.repeat(self.env.num_environments, 1) + torch.matmul(a_w_hf, a_h_last.t()).t() + a_b_hf.repeat(self.env.num_environments, 1))
-                        g = torch.sigmoid(torch.matmul(a_w_ig, x.t()).t() + a_b_ig.repeat(self.env.num_environments, 1) + torch.matmul(a_w_hg, a_h_last.t()).t() + a_b_hg.repeat(self.env.num_environments, 1))
+                        g = torch.tanh(torch.matmul(a_w_ig, x.t()).t() + a_b_ig.repeat(self.env.num_environments, 1) + torch.matmul(a_w_hg, a_h_last.t()).t() + a_b_hg.repeat(self.env.num_environments, 1))
                         o = torch.sigmoid(torch.matmul(a_w_io, x.t()).t() + a_b_io.repeat(self.env.num_environments, 1) + torch.matmul(a_w_ho, a_h_last.t()).t() + a_b_ho.repeat(self.env.num_environments, 1))
                         c1 = f * a_c_last
                         c2 = i * g
@@ -400,7 +400,7 @@ class BasePlayer(object):
                         x = self.layers_out['critic_mlp']
                         i = torch.sigmoid(torch.matmul(c_w_ii, x.t()).t() + c_b_ii.repeat(self.env.num_environments, 1) + torch.matmul(c_w_hi, c_h_last.t()).t() + c_b_hi.repeat(self.env.num_environments, 1))
                         f = torch.sigmoid(torch.matmul(c_w_if, x.t()).t() + c_b_if.repeat(self.env.num_environments, 1) + torch.matmul(c_w_hf, c_h_last.t()).t() + c_b_hf.repeat(self.env.num_environments, 1))
-                        g = torch.sigmoid(torch.matmul(c_w_ig, x.t()).t() + c_b_ig.repeat(self.env.num_environments, 1) + torch.matmul(c_w_hg, c_h_last.t()).t() + c_b_hg.repeat(self.env.num_environments, 1))
+                        g = torch.tanh(torch.matmul(c_w_ig, x.t()).t() + c_b_ig.repeat(self.env.num_environments, 1) + torch.matmul(c_w_hg, c_h_last.t()).t() + c_b_hg.repeat(self.env.num_environments, 1))
                         o = torch.sigmoid(torch.matmul(c_w_io, x.t()).t() + c_b_io.repeat(self.env.num_environments, 1) + torch.matmul(c_w_ho, c_h_last.t()).t() + c_b_ho.repeat(self.env.num_environments, 1))
                         c1 = f * c_c_last
                         c2 = i * g
