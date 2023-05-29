@@ -79,7 +79,11 @@ class BasePlayer(object):
         self.export_data = self.player_config.get('export_data', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
-        self.max_steps = 1000 # 3001 # 1501 # 10001 # 1001 # 108000 // 4
+        if self.env.cfg['name'] == 'AnymalTerrain':
+            self.max_steps = 1000 # 3001 # 1501 # 10001 # 1001 # 108000 // 4
+        if self.env.cfg['name'] == 'ShadowHand':
+            self.max_steps = 1001
+
         self.device = torch.device(self.device_name)
 
     def load_networks(self, params):
@@ -206,7 +210,7 @@ class BasePlayer(object):
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
 
         DIM_ACT = self.action_space.shape[-1]
-        DIM_OBS = self.observation_space.shape[-1] - DIM_ACT # - self.action_space.shape[-1]
+        DIM_OBS = self.observation_space.shape[-1] - DIM_ACT
 
         DIM_A_MLP_XX = 0
         DIM_C_MLP_XX = 0
@@ -222,7 +226,10 @@ class BasePlayer(object):
         DIM_A_MLP_XX = self.config['network'].network_builder.params['mlp']['units'][-1]
         DIM_C_MLP_XX = self.config['network'].network_builder.params['mlp']['units'][-1]
 
-        if len(self.model.get_default_rnn_state()) == 4:
+        if self.model.get_default_rnn_state() == None:
+            rnn_type = None
+            print("rnn model not supported")
+        elif len(self.model.get_default_rnn_state()) == 4:
             rnn_type = 'lstm'
             DIM_A_LSTM_HX = self.model.get_default_rnn_state()[0].size(dim=2) # actor lstm hn  (short-term memory)
             DIM_A_LSTM_CX = self.model.get_default_rnn_state()[1].size(dim=2) # actor lstm cn  (long-term memory)
@@ -232,22 +239,19 @@ class BasePlayer(object):
             rnn_type = 'gru'
             DIM_A_GRU_HX = self.model.get_default_rnn_state()[0].size(dim=2) # gru hn
             DIM_C_GRU_HX = self.model.get_default_rnn_state()[1].size(dim=2) # gru hn
-        else:
-            print("rnn model not supported")
             
         tensor_specs = OrderedDict([
             ('ENV', 1),
             ('TIME', 1),
             ('DONE', 1),
             ('REWARD', 1),
-            ('FT_FORCE', 4),
             ('ACT', DIM_ACT),
             ('OBS', DIM_OBS),
             ('A_MLP_XX', DIM_A_MLP_XX),
             ('A_LSTM_CX', DIM_A_LSTM_CX),
             ('A_LSTM_C1X', DIM_A_LSTM_CX),
             ('A_LSTM_C2X', DIM_A_LSTM_CX),
-            ('A_LSTM_HX', DIM_A_LSTM_CX),
+            ('A_LSTM_HX', DIM_A_LSTM_HX),
             ('C_MLP_XX', DIM_C_MLP_XX),
             ('C_LSTM_CX', DIM_C_LSTM_CX),
             ('C_LSTM_C1X', DIM_C_LSTM_CX),
@@ -256,6 +260,14 @@ class BasePlayer(object):
             ('A_GRU_HX', DIM_A_GRU_HX),
             ('C_GRU_HX', DIM_C_GRU_HX),
         ])
+
+        if self.env.cfg['name'] == 'AnymalTerrain':
+            new_tensor_specs = OrderedDict()
+            for key, value in tensor_specs.items():
+                if key == 'ACT':  # Add 'FT_FORCE' after 'ACT'
+                    new_tensor_specs['FT_FORCE'] = 4
+                new_tensor_specs[key] = value
+            tensor_specs = new_tensor_specs
 
         N_STEPS = self.max_steps
         N_ENVS = self.env.num_environments
@@ -293,60 +305,60 @@ class BasePlayer(object):
             # actor lstm weights and biases
             a_w_ih = self.model.a2c_network.a_rnn.rnn.weight_ih_l0.detach()
             # pd.DataFrame(w_ih.cpu()).to_csv('a_w_ih.csv')
-            a_w_ii = a_w_ih[:128,:]
-            a_w_if = a_w_ih[128:256,:]
-            a_w_ig = a_w_ih[256:384:,:]
-            a_w_io = a_w_ih[384:,:]
+            a_w_ii = a_w_ih[0*DIM_A_LSTM_HX:1*DIM_A_LSTM_HX,:]
+            a_w_if = a_w_ih[1*DIM_A_LSTM_HX:2*DIM_A_LSTM_HX,:]
+            a_w_ig = a_w_ih[2*DIM_A_LSTM_HX:3*DIM_A_LSTM_HX,:]
+            a_w_io = a_w_ih[3*DIM_A_LSTM_HX:4*DIM_A_LSTM_HX,:]
             
             a_w_hh = self.model.a2c_network.a_rnn.rnn.weight_hh_l0.detach()
             # pd.DataFrame(w_hh.cpu()).to_csv('a_w_hh.csv')
-            a_w_hi = a_w_hh[:128,:]
-            a_w_hf = a_w_hh[128:256,:]
-            a_w_hg = a_w_hh[256:384:,:]
-            a_w_ho = a_w_hh[384:,:]
+            a_w_hi = a_w_hh[0*DIM_A_LSTM_CX:1*DIM_A_LSTM_CX,:]
+            a_w_hf = a_w_hh[1*DIM_A_LSTM_CX:2*DIM_A_LSTM_CX,:]
+            a_w_hg = a_w_hh[2*DIM_A_LSTM_CX:3*DIM_A_LSTM_CX,:]
+            a_w_ho = a_w_hh[3*DIM_A_LSTM_CX:4*DIM_A_LSTM_CX,:]
 
             a_b_ih = self.model.a2c_network.a_rnn.rnn.bias_ih_l0.detach()
             # pd.DataFrame(b_ih.cpu()).to_csv('a_b_ih.csv')
-            a_b_ii = a_b_ih[:128]
-            a_b_if = a_b_ih[128:256]
-            a_b_ig = a_b_ih[256:384:]
-            a_b_io = a_b_ih[384:]
+            a_b_ii = a_b_ih[0*DIM_A_LSTM_HX:1*DIM_A_LSTM_HX]
+            a_b_if = a_b_ih[1*DIM_A_LSTM_HX:2*DIM_A_LSTM_HX]
+            a_b_ig = a_b_ih[2*DIM_A_LSTM_HX:3*DIM_A_LSTM_HX]
+            a_b_io = a_b_ih[3*DIM_A_LSTM_HX:4*DIM_A_LSTM_HX]
 
             a_b_hh = self.model.a2c_network.a_rnn.rnn.bias_hh_l0.detach()
             # pd.DataFrame(b_hh.cpu()).to_csv('a_b_hh.csv')
-            a_b_hi = a_b_hh[:128]
-            a_b_hf = a_b_hh[128:256]
-            a_b_hg = a_b_hh[256:384:]
-            a_b_ho = a_b_hh[384:]
+            a_b_hi = a_b_hh[0*DIM_A_LSTM_CX:1*DIM_A_LSTM_CX]
+            a_b_hf = a_b_hh[1*DIM_A_LSTM_CX:2*DIM_A_LSTM_CX]
+            a_b_hg = a_b_hh[2*DIM_A_LSTM_CX:3*DIM_A_LSTM_CX]
+            a_b_ho = a_b_hh[3*DIM_A_LSTM_CX:4*DIM_A_LSTM_CX]
         
             # critic lstm weights and biases
             c_w_ih = self.model.a2c_network.c_rnn.rnn.weight_ih_l0.detach()
             # pd.DataFrame(w_ih.cpu()).to_csv('c_w_ih.csv')
-            c_w_ii = c_w_ih[:128,:]
-            c_w_if = c_w_ih[128:256,:]
-            c_w_ig = c_w_ih[256:384:,:]
-            c_w_io = c_w_ih[384:,:]
+            c_w_ii = c_w_ih[0*DIM_C_LSTM_HX:1*DIM_C_LSTM_HX]
+            c_w_if = c_w_ih[1*DIM_C_LSTM_HX:2*DIM_C_LSTM_HX]
+            c_w_ig = c_w_ih[2*DIM_C_LSTM_HX:3*DIM_C_LSTM_HX]
+            c_w_io = c_w_ih[3*DIM_C_LSTM_HX:4*DIM_C_LSTM_HX]
             
             c_w_hh = self.model.a2c_network.c_rnn.rnn.weight_hh_l0.detach()
             # pd.DataFrame(w_hh.cpu()).to_csv('c_w_hh.csv')
-            c_w_hi = c_w_hh[:128,:]
-            c_w_hf = c_w_hh[128:256,:]
-            c_w_hg = c_w_hh[256:384:,:]
-            c_w_ho = c_w_hh[384:,:]
+            c_w_hi = c_w_hh[0*DIM_C_LSTM_CX:1*DIM_C_LSTM_CX]
+            c_w_hf = c_w_hh[1*DIM_C_LSTM_CX:2*DIM_C_LSTM_CX]
+            c_w_hg = c_w_hh[2*DIM_C_LSTM_CX:3*DIM_C_LSTM_CX]
+            c_w_ho = c_w_hh[3*DIM_C_LSTM_CX:4*DIM_C_LSTM_CX]
 
             c_b_ih = self.model.a2c_network.c_rnn.rnn.bias_ih_l0.detach()
             # pd.DataFrame(b_ih.cpu()).to_csv('c_b_ih.csv')
-            c_b_ii = c_b_ih[:128]
-            c_b_if = c_b_ih[128:256]
-            c_b_ig = c_b_ih[256:384:]
-            c_b_io = c_b_ih[384:]
+            c_b_ii = c_b_ih[0*DIM_C_LSTM_HX:1*DIM_C_LSTM_HX]
+            c_b_if = c_b_ih[1*DIM_C_LSTM_HX:2*DIM_C_LSTM_HX]
+            c_b_ig = c_b_ih[2*DIM_C_LSTM_HX:3*DIM_C_LSTM_HX]
+            c_b_io = c_b_ih[3*DIM_C_LSTM_HX:4*DIM_C_LSTM_HX]
 
             c_b_hh = self.model.a2c_network.c_rnn.rnn.bias_hh_l0.detach()
             # pd.DataFrame(b_hh.cpu()).to_csv('c_b_hh.csv')
-            c_b_hi = c_b_hh[:128]
-            c_b_hf = c_b_hh[128:256]
-            c_b_hg = c_b_hh[256:384:]
-            c_b_ho = c_b_hh[384:]
+            c_b_hi = c_b_hh[0*DIM_C_LSTM_CX:1*DIM_C_LSTM_CX]
+            c_b_hf = c_b_hh[1*DIM_C_LSTM_CX:2*DIM_C_LSTM_CX]
+            c_b_hg = c_b_hh[2*DIM_C_LSTM_CX:3*DIM_C_LSTM_CX]
+            c_b_ho = c_b_hh[3*DIM_C_LSTM_CX:4*DIM_C_LSTM_CX]
 
         need_init_rnn = self.is_rnn
         for _ in range(n_games):
@@ -444,7 +456,8 @@ class BasePlayer(object):
 
                     tensor_dict['ENV']['data'][t,:,:] = torch.unsqueeze(condition[:], dim=1)
                     tensor_dict['TIME']['data'][t,:,:] = torch.unsqueeze(time[:], dim=1)
-                    tensor_dict['FT_FORCE']['data'][t,:,:] = info['info']
+                    if self.env.cfg['name'] == 'AnymalTerrain':
+                        tensor_dict['FT_FORCE']['data'][t,:,:] = info['info']
                     tensor_dict['OBS']['data'][t,:,:] = obses[:,:DIM_OBS]
                     tensor_dict['ACT']['data'][t,:,:] = action
                     tensor_dict['REWARD']['data'][t,:,:] = torch.unsqueeze(r[:], dim=1)
@@ -523,8 +536,8 @@ class BasePlayer(object):
             df.columns = columns
             df.to_csv(name + '.csv')
 
-        t0 = 400 # 1000 # 500 # 9500 # 950 # 100 # 500
-        tf = 900 # 3000 # 1500 # 1500 # 10000 # 1000 # 600 # 527
+        t0 = 0 # 1000 # 500 # 9500 # 950 # 100 # 500
+        tf = 1000 # 3000 # 1500 # 1500 # 10000 # 1000 # 600 # 527
 
         if self.export_data:
             
@@ -544,17 +557,31 @@ class BasePlayer(object):
 
             # Create a folder name using the current date and time
             date_str = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
-            exp_str = f"_u[\
-                {self.env.specified_command_x_range[0]},\
-                {self.env.specified_command_x_range[1]},\
-                {self.env.specified_command_x_no}]_v[\
-                {self.env.specified_command_y_range[0]},\
-                {self.env.specified_command_y_range[1]},\
-                {self.env.specified_command_y_no}]_r[\
-                {self.env.specified_command_yawrate_range[0]},\
-                {self.env.specified_command_yawrate_range[1]},\
-                {self.env.specified_command_yawrate_no}]_n[\
-                {self.env.specified_command_no_copies}]"
+
+            if self.env.cfg['name'] == 'AnymalTerrain':
+                exp_str = f"_u[\
+                    {self.env.specified_command_x_range[0]},\
+                    {self.env.specified_command_x_range[1]},\
+                    {self.env.specified_command_x_no}]_v[\
+                    {self.env.specified_command_y_range[0]},\
+                    {self.env.specified_command_y_range[1]},\
+                    {self.env.specified_command_y_no}]_r[\
+                    {self.env.specified_command_yawrate_range[0]},\
+                    {self.env.specified_command_yawrate_range[1]},\
+                    {self.env.specified_command_yawrate_no}]_n[\
+                    {self.env.specified_command_no_copies}]"
+
+            if self.env.cfg['name'] == 'ShadowHand':
+                exp_str = f"_u[\
+                    {self.env.specified_command_roll_range[0]},\
+                    {self.env.specified_command_roll_range[1]},\
+                    {self.env.specified_command_roll_no}]_v[\
+                    {self.env.specified_command_pitch_range[0]},\
+                    {self.env.specified_command_pitch_range[1]},\
+                    {self.env.specified_command_pitch_no}]_r[\
+                    {self.env.specified_command_yaw_range[0]},\
+                    {self.env.specified_command_yaw_range[1]},\
+                    {self.env.specified_command_yaw_no}]"
             
             # Remove the spaces from the string
             exp_str = exp_str.replace(' ', '')
@@ -565,7 +592,7 @@ class BasePlayer(object):
             p.mkdir(exist_ok=True)
 
             # Save the dataframe to a CSV file
-            all_data.to_parquet(str(p / 'RAW_DATA.parquet'))
+            all_data.to_csv(str(p / 'RAW_DATA.csv'))
 
             # export the model used for data collection
             with open(p.joinpath('model.txt'), 'w') as file:
