@@ -17,6 +17,8 @@ import dask as dd
 
 import sklearn.preprocessing
 
+import matplotlib
+matplotlib.use('TkAgg')  # Replace 'TkAgg' with another backend if needed
 
 from collections import OrderedDict
 
@@ -214,10 +216,16 @@ class BasePlayer(object):
 
         DIM_A_MLP_XX = 0
         DIM_C_MLP_XX = 0
+
+        DIM_A_LSTM_HC = 0
+        DIM_C_LSTM_HC = 0
+
         DIM_A_LSTM_HX = 0
-        DIM_A_LSTM_CX = 0
         DIM_C_LSTM_HX = 0
+
+        DIM_A_LSTM_CX = 0
         DIM_C_LSTM_CX = 0
+
         DIM_A_GRU_HX = 0
         DIM_C_GRU_HX = 0
 
@@ -231,10 +239,15 @@ class BasePlayer(object):
             print("rnn model not supported")
         elif len(self.model.get_default_rnn_state()) == 4:
             rnn_type = 'lstm'
+
             DIM_A_LSTM_HX = self.model.get_default_rnn_state()[0].size(dim=2) # actor lstm hn  (short-term memory)
             DIM_A_LSTM_CX = self.model.get_default_rnn_state()[1].size(dim=2) # actor lstm cn  (long-term memory)
+            DIM_A_LSTM_HC = DIM_A_LSTM_HX + DIM_A_LSTM_CX
+
             DIM_C_LSTM_HX = self.model.get_default_rnn_state()[2].size(dim=2) # self.model.get_default_rnn_state()[2].size(dim=2) # critic lstm hn (short-term memory)
             DIM_C_LSTM_CX = self.model.get_default_rnn_state()[3].size(dim=2) # self.model.get_default_rnn_state()[3].size(dim=2) # critic lstm cn (short-term memory)
+            DIM_C_LSTM_HC = DIM_C_LSTM_HX + DIM_C_LSTM_CX
+            
         elif len(self.model.get_default_rnn_state()) == 2:
             rnn_type = 'gru'
             DIM_A_GRU_HX = self.model.get_default_rnn_state()[0].size(dim=2) # gru hn
@@ -248,11 +261,13 @@ class BasePlayer(object):
             ('ACT', DIM_ACT),
             ('OBS', DIM_OBS),
             ('A_MLP_XX', DIM_A_MLP_XX),
+            ('A_LSTM_HC', DIM_A_LSTM_HC),
             ('A_LSTM_CX', DIM_A_LSTM_CX),
             ('A_LSTM_C1X', DIM_A_LSTM_CX),
             ('A_LSTM_C2X', DIM_A_LSTM_CX),
             ('A_LSTM_HX', DIM_A_LSTM_HX),
             ('C_MLP_XX', DIM_C_MLP_XX),
+            ('C_LSTM_HC', DIM_C_LSTM_HC),
             ('C_LSTM_CX', DIM_C_LSTM_CX),
             ('C_LSTM_C1X', DIM_C_LSTM_CX),
             ('C_LSTM_C2X', DIM_C_LSTM_CX),
@@ -378,6 +393,35 @@ class BasePlayer(object):
 
             print_game_res = False
 
+
+
+            cx_pc_last = None
+
+            import pickle as pk
+            # AnymalTerrain (3) (perturb longer w/ noise) (with HC = (HC, CX))
+            DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-05-31_09-02-37_u[-1.0,1.0,21]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[10]/'
+            # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-02_10-25-10_u[-1.0,1.0,21]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[10]/'
+            
+            # AnymalTerrain (1) (no bias) no bias but pos u and neg u, no noise/perturb (with HC = (HC, CX))
+            # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-05-30_22-30-47_u[-1.0,1.0,21]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[10]/'
+
+            # load scaler and pca transforms
+            scl_hx = pk.load(open(DATA_PATH + 'A_LSTM_HX_SPEED_SCL.pkl','rb'))
+            pca_hx = pk.load(open(DATA_PATH + 'A_LSTM_HX_SPEED_PCA.pkl','rb'))
+            scl_cx = pk.load(open(DATA_PATH + 'A_LSTM_CX_SPEED_SCL.pkl','rb'))
+            pca_cx = pk.load(open(DATA_PATH + 'A_LSTM_CX_SPEED_PCA.pkl','rb'))
+
+            # Import the required library
+            import matplotlib.pyplot as plt
+
+            # Create the figure before the loop
+            fig = plt.figure()
+            ax1 = fig.add_subplot(111, projection='3d')
+
+            # Initialize the marker outside the loop
+            marker, = ax1.plot([0], [0], [0], 'ro')  # Use 'ro' for red circles
+
+
             for t in range(self.max_steps + 1):
                 if has_masks:
                     masks = self.env.get_action_mask()
@@ -392,8 +436,37 @@ class BasePlayer(object):
                         c_h_last = self.states[2][0,:,:] # self.layers_out['c_rnn'][1][0][0,0,:]
                         c_c_last = self.states[3][0,:,:] # self.layers_out['c_rnn'][1][1][0,0,:]
 
+
+                    # hx = self.states[0][0,:,:]
+                    # cx = self.states[1][0,:,:]
+                    # # cx[:,128:] += -1e6 # * cx_pc[:,:256]
+                    # # hc_last_pc = pca.transform(scl.transform(torch.squeeze(tensor_dict['A_LSTM_HC']['data'][t-2,:,:]).detach().cpu().numpy()))
+                    # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
+                    # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
+
+                    # ROBOT_ID = 0
+                    # # neural perturbations
+                    # perturb = True
+                    # if perturb and t >= 100:
+                    #     # hx_pc[ROBOT_ID,:] = 0 # * cx_pc[:,:256]
+                    #     # cx_pc[ROBOT_ID,:] = 0 # * cx_pc[:,:256]
+                    #     hx = torch.tensor(scl_hx.inverse_transform(pca_hx.inverse_transform(hx_pc)), dtype=torch.float32).unsqueeze(dim=0)
+                    #     cx = torch.tensor(scl_cx.inverse_transform(pca_cx.inverse_transform(cx_pc)), dtype=torch.float32).unsqueeze(dim=0)
+
+                    #     self.states[0][0,ROBOT_ID,:] = hx[:,ROBOT_ID,:]
+                    #     self.states[1][0,ROBOT_ID,:] = cx[:,ROBOT_ID,:]
+                    #     # self.states[1][0,ROBOT_ID,:] = cx[:,ROBOT_ID,DIM_A_LSTM_HX:]
+                        
                     action = self.get_action(obses, is_deterministic)
                     
+                    # hx = self.states[0][0,:,:]
+                    # cx = self.states[1][0,:,:]
+                    # # cx[:,128:] += -1e6 # * cx_pc[:,:256]
+                    # # hc_last_pc = pca.transform(scl.transform(torch.squeeze(tensor_dict['A_LSTM_HC']['data'][t-2,:,:]).detach().cpu().numpy()))
+                    # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
+                    # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
+
+
                     # compute internal LSTM states - confirmed that both c1 and c2 contribute, (f != ones) does not forget everything : )
                     if rnn_type == 'lstm':
                         x = self.layers_out['actor_mlp']
@@ -447,8 +520,7 @@ class BasePlayer(object):
                 # self.states[2][0,:,:] += 10 * torch.rand_like(self.states[2][0,:,:]) # [critic lstm hn (short-term memory)
                 # self.states[3][0,:,:] += 10 * torch.rand_like(self.states[3][0,:,:]) # [critic lstm cn (long-term memory)
 
-
-                if self.export_data:
+                if self.export_data:                  
 
                     condition = torch.arange(self.env.num_environments)
                     # condition = torch.arange(self.env.num_environments / 5).repeat(5)
@@ -465,16 +537,43 @@ class BasePlayer(object):
 
                     tensor_dict['A_MLP_XX']['data'][t,:,:] = self.layers_out['actor_mlp'] # torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
                     tensor_dict['C_MLP_XX']['data'][t,:,:] = self.layers_out['critic_mlp'] # lstm cn (long-term memory)
+
                     if rnn_type == 'lstm':
                         tensor_dict['A_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:]) # lstm hn (short-term memory)
                         tensor_dict['A_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:]) # lstm cn (long-term memory)
+                        tensor_dict['A_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['A_LSTM_HX']['data'][t,:,:], tensor_dict['A_LSTM_CX']['data'][t,:,:]), dim=1)
+
                         tensor_dict['C_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
                         tensor_dict['C_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[3][0,:,:]) # lstm cn (long-term memory)
+                        tensor_dict['C_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['C_LSTM_HX']['data'][t,:,:], tensor_dict['C_LSTM_CX']['data'][t,:,:]), dim=1)
+
                     elif rnn_type == 'gru':
                         tensor_dict['A_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:])
                         tensor_dict['C_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:])
                     else:
                         print("rnn model not supported")
+
+                    # if t > 0:
+                    #     # Update plot
+                        
+                    #     # Plot the line of the last agent
+                    #     ax1.plot(
+                    #         [hx_pc[ROBOT_ID, 0], hx_pc_last[ROBOT_ID,0]], 
+                    #         [hx_pc[ROBOT_ID, 1], hx_pc_last[ROBOT_ID,1]],
+                    #         [hx_pc[ROBOT_ID, 2], hx_pc_last[ROBOT_ID,2]],
+                    #         c='k')
+
+                    #     # Update the marker position
+                    #     marker.set_data([hx_pc[ROBOT_ID, 0]], [hx_pc[ROBOT_ID, 1]])
+                    #     marker.set_3d_properties([hx_pc[ROBOT_ID, 2]])
+                        
+                    #     # Set the title of the plot
+                    #     ax1.set_title(f'Timestep: {t}')
+                    #     plt.draw()
+                    #     plt.pause(0.01)
+
+                    # hx_pc_last = hx_pc
+                    # cx_pc_last = cx_pc
 
                 cr += r
                 steps += 1
@@ -592,7 +691,7 @@ class BasePlayer(object):
             p.mkdir(exist_ok=True)
 
             # Save the dataframe to a CSV file
-            all_data.to_csv(str(p / 'RAW_DATA.csv'))
+            all_data.to_parquet(str(p / 'RAW_DATA.parquet'))
 
             # export the model used for data collection
             with open(p.joinpath('model.txt'), 'w') as file:
