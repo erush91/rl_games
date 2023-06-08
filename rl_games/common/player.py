@@ -82,7 +82,7 @@ class BasePlayer(object):
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
         if self.env.cfg['name'] == 'AnymalTerrain':
-            self.max_steps = 1000 # 3001 # 1501 # 10001 # 1001 # 108000 // 4
+            self.max_steps = 1001 # 3001 # 1501 # 10001 # 1001 # 108000 // 4
         if self.env.cfg['name'] == 'ShadowHand':
             self.max_steps = 1001
 
@@ -229,7 +229,6 @@ class BasePlayer(object):
         DIM_A_GRU_HX = 0
         DIM_C_GRU_HX = 0
 
-        torch.zeros(self.max_steps, self.env.num_environments, 1, dtype=torch.float32).to(self.device)
 
         DIM_A_MLP_XX = self.config['network'].network_builder.params['mlp']['units'][-1]
         DIM_C_MLP_XX = self.config['network'].network_builder.params['mlp']['units'][-1]
@@ -284,13 +283,35 @@ class BasePlayer(object):
                 new_tensor_specs[key] = value
             tensor_specs = new_tensor_specs
 
-        N_STEPS = self.max_steps
+        N_STEPS = self.max_steps - 1
         N_ENVS = self.env.num_environments
         
         def create_tensor_dict(tensor_specs):
             tensor_dict = OrderedDict()
             for key, dim in tensor_specs.items():
-                if dim ==1:
+                if key == 'TIME':
+
+                    # Create an array with a sequence of numbers multiplied by step size repeated over rows
+                    arr = np.tile(np.arange(N_STEPS) * self.env.dt, (N_ENVS, 1)).T
+                    arr3d = np.expand_dims(arr, axis=2)
+
+                    # convert to torch tensor
+                    tensor_data = torch.from_numpy(arr3d)
+
+                    # assign to your dictionary
+                    tensor_dict[key] = {'data': tensor_data, 'cols': [key]}
+                    
+                elif key == 'ENV':
+                    # Create an array with a sequence of numbers repeated over rows
+                    arr = np.tile(np.arange(N_ENVS), (N_STEPS, 1))
+                    arr3d = np.expand_dims(arr, axis=2)
+
+                    # convert to torch tensor
+                    tensor_data = torch.from_numpy(arr3d)
+
+                    # assign to your dictionary
+                    tensor_dict[key] = {'data': tensor_data, 'cols': [key]}
+                elif dim == 1:
                     tensor_dict[key] = {'data': torch.zeros((N_STEPS, N_ENVS, dim)), 'cols': [key]}
                 else:
                     tensor_dict[key] = {'data': torch.zeros((N_STEPS, N_ENVS, dim)), 'cols': np.char.mod('%s_RAW_%%03d' % key, np.arange(dim))}
@@ -405,11 +426,21 @@ class BasePlayer(object):
             # AnymalTerrain (1) (no bias) no bias but pos u and neg u, no noise/perturb (with HC = (HC, CX))
             # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-05-30_22-30-47_u[-1.0,1.0,21]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[10]/'
 
+
+            # AnymalTerrain w/ 2 LSTM (no act in obs, no zero small commands) (BEST) (2-LSTM-DIST) (perturb +/- 500N, 1% begin, 98% cont) (seq_len=seq_length=horizon_length=16) (w/ bias)
+            DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-04_15-17-09_u[0.3,1.0,16]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[100]/'
+
+            # AnymalTerrain w/ 2 LSTM (no act in obs, no zero small commands) (BEST) (2-LSTM-DIST) (perturb +/- 500N, 1% begin, 98% cont) (seq_len=seq_length=horizon_length=16) (w/o bias)
+            DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-05_10-56-19_u[0.3,1.0,16]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/' # w/o noise
+            # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-05_11-01-54_u[0.3,1.0,16]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/' # w/ noise
+
             # load scaler and pca transforms
             scl_hx = pk.load(open(DATA_PATH + 'A_LSTM_HX_SPEED_SCL.pkl','rb'))
             pca_hx = pk.load(open(DATA_PATH + 'A_LSTM_HX_SPEED_PCA.pkl','rb'))
             scl_cx = pk.load(open(DATA_PATH + 'A_LSTM_CX_SPEED_SCL.pkl','rb'))
             pca_cx = pk.load(open(DATA_PATH + 'A_LSTM_CX_SPEED_PCA.pkl','rb'))
+            scl_hc = pk.load(open(DATA_PATH + 'A_LSTM_HC_SPEED_SCL.pkl','rb'))
+            pca_hc = pk.load(open(DATA_PATH + 'A_LSTM_HC_SPEED_PCA.pkl','rb'))
 
             # Import the required library
             import matplotlib.pyplot as plt
@@ -437,34 +468,61 @@ class BasePlayer(object):
                         c_c_last = self.states[3][0,:,:] # self.layers_out['c_rnn'][1][1][0,0,:]
 
 
-                    # hx = self.states[0][0,:,:]
-                    # cx = self.states[1][0,:,:]
-                    # # cx[:,128:] += -1e6 # * cx_pc[:,:256]
-                    # # hc_last_pc = pca.transform(scl.transform(torch.squeeze(tensor_dict['A_LSTM_HC']['data'][t-2,:,:]).detach().cpu().numpy()))
-                    # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
-                    # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
+                    # # hx = self.states[0][0,:,:]
+                    # # cx = self.states[1][0,:,:]
+                    # hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
+                    # # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
+                    # # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
+                    # hc_pc = pca_hc.transform(scl_hc.transform(torch.squeeze(hc).detach().cpu().numpy()))
 
                     # ROBOT_ID = 0
-                    # # neural perturbations
+                    # neural perturbations
                     # perturb = True
                     # if perturb and t >= 100:
-                    #     # hx_pc[ROBOT_ID,:] = 0 # * cx_pc[:,:256]
-                    #     # cx_pc[ROBOT_ID,:] = 0 # * cx_pc[:,:256]
-                    #     hx = torch.tensor(scl_hx.inverse_transform(pca_hx.inverse_transform(hx_pc)), dtype=torch.float32).unsqueeze(dim=0)
-                    #     cx = torch.tensor(scl_cx.inverse_transform(pca_cx.inverse_transform(cx_pc)), dtype=torch.float32).unsqueeze(dim=0)
+                    #     # hx_pc[ROBOT_ID,2] += 1e3 # * cx_pc[:,:256]
+                    #     # cx_pc[ROBOT_ID,2] += 1e3 # * cx_pc[:,:256]
+                    #     # hc_pc[ROBOT_ID, 0] *= 2.0 # * cx_pc[:,:256]
+                    #     # hx = torch.tensor(scl_hx.inverse_transform(pca_hx.inverse_transform(hx_pc)), dtype=torch.float32).unsqueeze(dim=0)
+                    #     # cx = torch.tensor(scl_cx.inverse_transform(pca_cx.inverse_transform(cx_pc)), dtype=torch.float32).unsqueeze(dim=0)
+                    #     hc = torch.tensor(scl_hc.inverse_transform(pca_hc.inverse_transform(hc_pc)), dtype=torch.float32).unsqueeze(dim=0)
 
-                    #     self.states[0][0,ROBOT_ID,:] = hx[:,ROBOT_ID,:]
-                    #     self.states[1][0,ROBOT_ID,:] = cx[:,ROBOT_ID,:]
-                    #     # self.states[1][0,ROBOT_ID,:] = cx[:,ROBOT_ID,DIM_A_LSTM_HX:]
+                    #     # self.states[0][0,ROBOT_ID,:] = hx[:,ROBOT_ID,:]
+                    #     # self.states[1][0,ROBOT_ID,:] = cx[:,ROBOT_ID,:]
+                    #     self.states[0][0,ROBOT_ID,:] = 0*hc[:,ROBOT_ID,:DIM_A_LSTM_HX]
+                    #     self.states[1][0,ROBOT_ID,:] = 0*hc[:,ROBOT_ID,DIM_A_LSTM_HX:]
+
+                    # if t > 0:
+                    #     # Update plot
+                        
+                    #     # Plot the line of the last agent
+                    #     ax1.plot(
+                    #         [hc_pc[ROBOT_ID, 0], hc_pc_last[ROBOT_ID, 0]], 
+                    #         [hc_pc[ROBOT_ID, 1], hc_pc_last[ROBOT_ID, 1]],
+                    #         [hc_pc[ROBOT_ID, 2], hc_pc_last[ROBOT_ID, 2]],
+                    #         c='k')
+
+                    #     # Update the marker position
+                    #     marker.set_data([hc_pc[ROBOT_ID, 0]], [hc_pc[ROBOT_ID, 1]])
+                    #     marker.set_3d_properties([hc_pc[ROBOT_ID, 2]])
+                        
+                    #     # Set the title of the plot
+                    #     ax1.set_title(f'Timestep: {t}')
+                    #     plt.draw()
+                    #     plt.pause(0.01)
+
+                    # # hx_pc_last = hx_pc
+                    # # cx_pc_last = cx_pc
+                    # hc_pc_last = hc_pc
+
                         
                     action = self.get_action(obses, is_deterministic)
                     
                     # hx = self.states[0][0,:,:]
                     # cx = self.states[1][0,:,:]
-                    # # cx[:,128:] += -1e6 # * cx_pc[:,:256]
-                    # # hc_last_pc = pca.transform(scl.transform(torch.squeeze(tensor_dict['A_LSTM_HC']['data'][t-2,:,:]).detach().cpu().numpy()))
-                    # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
-                    # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
+                    # hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
+                    # # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
+                    # # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
+                    # hc_pc = pca_hc.transform(scl_hc.transform(torch.squeeze(hc).detach().cpu().numpy()))
 
 
                     # compute internal LSTM states - confirmed that both c1 and c2 contribute, (f != ones) does not forget everything : )
@@ -526,8 +584,6 @@ class BasePlayer(object):
                     # condition = torch.arange(self.env.num_environments / 5).repeat(5)
                     time = torch.Tensor([t * self.env.dt]).repeat(self.env.num_environments)
 
-                    tensor_dict['ENV']['data'][t,:,:] = torch.unsqueeze(condition[:], dim=1)
-                    tensor_dict['TIME']['data'][t,:,:] = torch.unsqueeze(time[:], dim=1)
                     if self.env.cfg['name'] == 'AnymalTerrain':
                         tensor_dict['FT_FORCE']['data'][t,:,:] = info['info']
                     tensor_dict['OBS']['data'][t,:,:] = obses[:,:DIM_OBS]
@@ -553,28 +609,6 @@ class BasePlayer(object):
                     else:
                         print("rnn model not supported")
 
-                    # if t > 0:
-                    #     # Update plot
-                        
-                    #     # Plot the line of the last agent
-                    #     ax1.plot(
-                    #         [hx_pc[ROBOT_ID, 0], hx_pc_last[ROBOT_ID,0]], 
-                    #         [hx_pc[ROBOT_ID, 1], hx_pc_last[ROBOT_ID,1]],
-                    #         [hx_pc[ROBOT_ID, 2], hx_pc_last[ROBOT_ID,2]],
-                    #         c='k')
-
-                    #     # Update the marker position
-                    #     marker.set_data([hx_pc[ROBOT_ID, 0]], [hx_pc[ROBOT_ID, 1]])
-                    #     marker.set_3d_properties([hx_pc[ROBOT_ID, 2]])
-                        
-                    #     # Set the title of the plot
-                    #     ax1.set_title(f'Timestep: {t}')
-                    #     plt.draw()
-                    #     plt.pause(0.01)
-
-                    # hx_pc_last = hx_pc
-                    # cx_pc_last = cx_pc
-
                 cr += r
                 steps += 1
 
@@ -586,7 +620,7 @@ class BasePlayer(object):
                 done_indices = all_done_indices[::self.num_agents]
                 done_count = len(done_indices)
                 games_played += done_count
-
+                print('gameslost:', games_played, '    games won:', self.env.num_environments - games_played)
                 if done_count > 0:
                     if self.is_rnn:
                         for s in self.states:
