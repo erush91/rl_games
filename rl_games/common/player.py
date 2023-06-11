@@ -430,9 +430,12 @@ class BasePlayer(object):
             # AnymalTerrain w/ 2 LSTM (no act in obs, no zero small commands) (BEST) (2-LSTM-DIST) (perturb +/- 500N, 1% begin, 98% cont) (seq_len=seq_length=horizon_length=16) (w/ bias)
             DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-04_15-17-09_u[0.3,1.0,16]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[100]/'
 
-            # AnymalTerrain w/ 2 LSTM (no act in obs, no zero small commands) (BEST) (2-LSTM-DIST) (perturb +/- 500N, 1% begin, 98% cont) (seq_len=seq_length=horizon_length=16) (w/o bias)
+            # AnymalTerrain w/ 2 LSTM (no act in obs, no zero small commands) (BEST) (2-LSTM16-DIST500) (perturb +/- 500N, 1% begin, 98% cont) (seq_len=seq_length=horizon_length=16) (w/o bias)
             DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-05_10-56-19_u[0.3,1.0,16]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/' # w/o noise
             # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-05_11-01-54_u[0.3,1.0,16]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/' # w/ noise
+
+            # AnymalTerrain w/ 2 LSTM (no act in obs, no zero small commands) (BEST) (2-LSTM4-DIST500) (perturb +/- 500N, 1% begin, 98% cont) (seq_len=seq_length=4, horizon_length=16) (w/o bias)
+            # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-06_20-23-04_u[0.4,1.0,14]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]_LSTM4-DIST500-noperturb/' 
 
             # load scaler and pca transforms
             scl_hx = pk.load(open(DATA_PATH + 'A_LSTM_HX_SPEED_SCL.pkl','rb'))
@@ -452,8 +455,9 @@ class BasePlayer(object):
             # Initialize the marker outside the loop
             marker, = ax1.plot([0], [0], [0], 'ro')  # Use 'ro' for red circles
 
+            perturb_idx = 0
 
-            for t in range(self.max_steps + 1):
+            for t in range(self.max_steps - 1):
                 if has_masks:
                     masks = self.env.get_action_mask()
                     action = self.get_masked_action(
@@ -466,65 +470,9 @@ class BasePlayer(object):
                         a_c_last = self.states[1][0,:,:] # self.layers_out['a_rnn'][1][1][0,0,:]
                         c_h_last = self.states[2][0,:,:] # self.layers_out['c_rnn'][1][0][0,0,:]
                         c_c_last = self.states[3][0,:,:] # self.layers_out['c_rnn'][1][1][0,0,:]
-
-
-                    # # hx = self.states[0][0,:,:]
-                    # # cx = self.states[1][0,:,:]
-                    # hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
-                    # # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
-                    # # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
-                    # hc_pc = pca_hc.transform(scl_hc.transform(torch.squeeze(hc).detach().cpu().numpy()))
-
-                    # ROBOT_ID = 0
-                    # neural perturbations
-                    # perturb = True
-                    # if perturb and t >= 100:
-                    #     # hx_pc[ROBOT_ID,2] += 1e3 # * cx_pc[:,:256]
-                    #     # cx_pc[ROBOT_ID,2] += 1e3 # * cx_pc[:,:256]
-                    #     # hc_pc[ROBOT_ID, 0] *= 2.0 # * cx_pc[:,:256]
-                    #     # hx = torch.tensor(scl_hx.inverse_transform(pca_hx.inverse_transform(hx_pc)), dtype=torch.float32).unsqueeze(dim=0)
-                    #     # cx = torch.tensor(scl_cx.inverse_transform(pca_cx.inverse_transform(cx_pc)), dtype=torch.float32).unsqueeze(dim=0)
-                    #     hc = torch.tensor(scl_hc.inverse_transform(pca_hc.inverse_transform(hc_pc)), dtype=torch.float32).unsqueeze(dim=0)
-
-                    #     # self.states[0][0,ROBOT_ID,:] = hx[:,ROBOT_ID,:]
-                    #     # self.states[1][0,ROBOT_ID,:] = cx[:,ROBOT_ID,:]
-                    #     self.states[0][0,ROBOT_ID,:] = 0*hc[:,ROBOT_ID,:DIM_A_LSTM_HX]
-                    #     self.states[1][0,ROBOT_ID,:] = 0*hc[:,ROBOT_ID,DIM_A_LSTM_HX:]
-
-                    # if t > 0:
-                    #     # Update plot
-                        
-                    #     # Plot the line of the last agent
-                    #     ax1.plot(
-                    #         [hc_pc[ROBOT_ID, 0], hc_pc_last[ROBOT_ID, 0]], 
-                    #         [hc_pc[ROBOT_ID, 1], hc_pc_last[ROBOT_ID, 1]],
-                    #         [hc_pc[ROBOT_ID, 2], hc_pc_last[ROBOT_ID, 2]],
-                    #         c='k')
-
-                    #     # Update the marker position
-                    #     marker.set_data([hc_pc[ROBOT_ID, 0]], [hc_pc[ROBOT_ID, 1]])
-                    #     marker.set_3d_properties([hc_pc[ROBOT_ID, 2]])
-                        
-                    #     # Set the title of the plot
-                    #     ax1.set_title(f'Timestep: {t}')
-                    #     plt.draw()
-                    #     plt.pause(0.01)
-
-                    # # hx_pc_last = hx_pc
-                    # # cx_pc_last = cx_pc
-                    # hc_pc_last = hc_pc
-
                         
                     action = self.get_action(obses, is_deterministic)
                     
-                    # hx = self.states[0][0,:,:]
-                    # cx = self.states[1][0,:,:]
-                    # hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
-                    # # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
-                    # # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
-                    # hc_pc = pca_hc.transform(scl_hc.transform(torch.squeeze(hc).detach().cpu().numpy()))
-
-
                     # compute internal LSTM states - confirmed that both c1 and c2 contribute, (f != ones) does not forget everything : )
                     if rnn_type == 'lstm':
                         x = self.layers_out['actor_mlp']
@@ -570,13 +518,81 @@ class BasePlayer(object):
                 #     else:
                 #         print(key, value.size())
 
-
+                # if t % 10 == 0:
+                #     obses[:,perturb_idx] += 1 
+                #     perturb_idx += 1
 
                 # print(self.states[0][0,0,:], self.states[1][0,0,:], self.states[2][0,0,:], self.states[3][0,0,:])
                 # self.states[0][0,:,:] += 10 * torch.rand_like(self.states[0][0,:,:]) # [actor lstm hn (short-term memory)
                 # self.states[1][0,:,:] += 10 * torch.rand_like(self.states[1][0,:,:]) # [actor lstm cn (long-term memory)
                 # self.states[2][0,:,:] += 10 * torch.rand_like(self.states[2][0,:,:]) # [critic lstm hn (short-term memory)
                 # self.states[3][0,:,:] += 10 * torch.rand_like(self.states[3][0,:,:]) # [critic lstm cn (long-term memory)
+
+
+                # hx = self.states[0][0,:,:]
+                # cx = self.states[1][0,:,:]
+                hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
+                # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
+                # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
+                hc_pc = pca_hc.transform(scl_hc.transform(torch.squeeze(hc).detach().cpu().numpy()))
+
+                ROBOT_ID_START = 0
+                ROBOT_ID_END = 9
+                ROBOT_PERTURB_IDX = np.arange(0, 256, 1) # np.arange(0, 512, 2)
+                HC_PERTURB_IDX = np.arange(0, 256, 1)
+                # neural perturbations
+
+                # if t > 100 and t % 130 == 0:
+                if t > 0:
+                    # obses[:,perturb_idx] += 1
+                    # hc_pc[ROBOT_PERTURB_IDX,HC_PERTURB_IDX] += 25
+
+                    # hc_pc[ROBOT_ID_START:ROBOT_ID_END,perturb_idx] += 25 # * cx_pc[:,:256]
+                    # cx_pc[ROBOT_ID_START:ROBOT_ID_END,2] += 1e3 # * cx_pc[:,:256]
+                    # hc_pc[ROBOT_ID_START:ROBOT_ID_END, 0] *= 2.0 # * cx_pc[:,:256]
+                    # hx = torch.tensor(scl_hx.inverse_transform(pca_hx.inverse_transform(hx_pc)), dtype=torch.float32).unsqueeze(dim=0)
+                    # cx = torch.tensor(scl_cx.inverse_transform(pca_cx.inverse_transform(cx_pc)), dtype=torch.float32).unsqueeze(dim=0)
+
+                    hc_pc[ROBOT_ID_START,:] *= 0 # * cx_pc[:,:256]
+
+                    hc = torch.tensor(scl_hc.inverse_transform(pca_hc.inverse_transform(hc_pc)), dtype=torch.float32).unsqueeze(dim=0)
+
+                    # self.states[0][0,ROBOT_ID_START:ROBOT_ID_END,:] = hx[:,ROBOT_ID_START:ROBOT_ID_END,:]
+                    # self.states[1][0,ROBOT_ID_START:ROBOT_ID_END,:] = cx[:,ROBOT_ID_START:ROBOT_ID_END,:]
+                    self.states[0][0,ROBOT_ID_START,:] = hc[:,ROBOT_ID_START,:DIM_A_LSTM_HX]
+                    self.states[1][0,ROBOT_ID_START,:] = hc[:,ROBOT_ID_START,DIM_A_LSTM_HX:]
+
+                    perturb_idx += 1
+
+                # if t > 0:
+                #     # Update plot
+                    
+                #     # Plot the line of the last agent
+                #     ax1.plot(
+                #         [hc_pc[ROBOT_ID_START, 0], hc_pc_last[ROBOT_ID_START, 0]], 
+                #         [hc_pc[ROBOT_ID_START, 1], hc_pc_last[ROBOT_ID_START, 1]],
+                #         [hc_pc[ROBOT_ID_START, 2], hc_pc_last[ROBOT_ID_START, 2]],
+                #         c='k')
+
+                #     # Update the marker position
+                #     marker.set_data([hc_pc[ROBOT_ID_START, 0]], [hc_pc[ROBOT_ID_START, 1]])
+                #     marker.set_3d_properties([hc_pc[ROBOT_ID_START, 2]])
+                    
+                #     # Set the title of the plot
+                #     ax1.set_title(f'Timestep: {t}')
+                #     plt.draw()
+                #     plt.pause(0.01)
+
+                # hx_pc_last = hx_pc
+                # cx_pc_last = cx_pc
+                hc_pc_last = hc_pc
+
+                # hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
+                # # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
+                # # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
+                # hc_pc = pca_hc.transform(scl_hc.transform(torch.squeeze(hc).detach().cpu().numpy()))
+
+
 
                 if self.export_data:                  
 
