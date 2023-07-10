@@ -531,38 +531,38 @@ class BasePlayer(object):
 
                 # hx = self.states[0][0,:,:]
                 # cx = self.states[1][0,:,:]
-                hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
-                # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
-                # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
-                hc_pc = pca_hc.transform(scl_hc.transform(torch.squeeze(hc).detach().cpu().numpy()))
+                # hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
+                # # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
+                # # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
+                # hc_pc = pca_hc.transform(scl_hc.transform(torch.squeeze(hc).detach().cpu().numpy()))
 
-                ROBOT_ID_START = 0
-                ROBOT_ID_END = 9
-                ROBOT_PERTURB_IDX = np.arange(0, 256, 1) # np.arange(0, 512, 2)
-                HC_PERTURB_IDX = np.arange(0, 256, 1)
-                # neural perturbations
+                # ROBOT_ID_START = 0
+                # ROBOT_ID_END = 9
+                # ROBOT_PERTURB_IDX = np.arange(0, 256, 1) # np.arange(0, 512, 2)
+                # HC_PERTURB_IDX = np.arange(0, 256, 1)
+                # # neural perturbations
 
-                # if t > 100 and t % 130 == 0:
-                if t > 0:
-                    # obses[:,perturb_idx] += 1
-                    # hc_pc[ROBOT_PERTURB_IDX,HC_PERTURB_IDX] += 25
+                # # if t > 100 and t % 130 == 0:
+                # if t > 0:
+                #     # obses[:,perturb_idx] += 1
+                #     # hc_pc[ROBOT_PERTURB_IDX,HC_PERTURB_IDX] += 25
 
-                    # hc_pc[ROBOT_ID_START:ROBOT_ID_END,perturb_idx] += 25 # * cx_pc[:,:256]
-                    # cx_pc[ROBOT_ID_START:ROBOT_ID_END,2] += 1e3 # * cx_pc[:,:256]
-                    # hc_pc[ROBOT_ID_START:ROBOT_ID_END, 0] *= 2.0 # * cx_pc[:,:256]
-                    # hx = torch.tensor(scl_hx.inverse_transform(pca_hx.inverse_transform(hx_pc)), dtype=torch.float32).unsqueeze(dim=0)
-                    # cx = torch.tensor(scl_cx.inverse_transform(pca_cx.inverse_transform(cx_pc)), dtype=torch.float32).unsqueeze(dim=0)
+                #     # hc_pc[ROBOT_ID_START:ROBOT_ID_END,perturb_idx] += 25 # * cx_pc[:,:256]
+                #     # cx_pc[ROBOT_ID_START:ROBOT_ID_END,2] += 1e3 # * cx_pc[:,:256]
+                #     # hc_pc[ROBOT_ID_START:ROBOT_ID_END, 0] *= 2.0 # * cx_pc[:,:256]
+                #     # hx = torch.tensor(scl_hx.inverse_transform(pca_hx.inverse_transform(hx_pc)), dtype=torch.float32).unsqueeze(dim=0)
+                #     # cx = torch.tensor(scl_cx.inverse_transform(pca_cx.inverse_transform(cx_pc)), dtype=torch.float32).unsqueeze(dim=0)
 
-                    hc_pc[ROBOT_ID_START,:] *= 0 # * cx_pc[:,:256]
+                #     hc_pc[ROBOT_ID_START,:] *= 0 # * cx_pc[:,:256]
 
-                    hc = torch.tensor(scl_hc.inverse_transform(pca_hc.inverse_transform(hc_pc)), dtype=torch.float32).unsqueeze(dim=0)
+                #     hc = torch.tensor(scl_hc.inverse_transform(pca_hc.inverse_transform(hc_pc)), dtype=torch.float32).unsqueeze(dim=0)
 
-                    # self.states[0][0,ROBOT_ID_START:ROBOT_ID_END,:] = hx[:,ROBOT_ID_START:ROBOT_ID_END,:]
-                    # self.states[1][0,ROBOT_ID_START:ROBOT_ID_END,:] = cx[:,ROBOT_ID_START:ROBOT_ID_END,:]
-                    self.states[0][0,ROBOT_ID_START,:] = hc[:,ROBOT_ID_START,:DIM_A_LSTM_HX]
-                    self.states[1][0,ROBOT_ID_START,:] = hc[:,ROBOT_ID_START,DIM_A_LSTM_HX:]
+                #     # self.states[0][0,ROBOT_ID_START:ROBOT_ID_END,:] = hx[:,ROBOT_ID_START:ROBOT_ID_END,:]
+                #     # self.states[1][0,ROBOT_ID_START:ROBOT_ID_END,:] = cx[:,ROBOT_ID_START:ROBOT_ID_END,:]
+                #     self.states[0][0,ROBOT_ID_START,:] = hc[:,ROBOT_ID_START,:DIM_A_LSTM_HX]
+                #     self.states[1][0,ROBOT_ID_START,:] = hc[:,ROBOT_ID_START,DIM_A_LSTM_HX:]
 
-                    perturb_idx += 1
+                #     perturb_idx += 1
 
                 # if t > 0:
                 #     # Update plot
@@ -585,7 +585,7 @@ class BasePlayer(object):
 
                 # hx_pc_last = hx_pc
                 # cx_pc_last = cx_pc
-                hc_pc_last = hc_pc
+                # hc_pc_last = hc_pc
 
                 # hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
                 # # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
