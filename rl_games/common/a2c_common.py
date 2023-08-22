@@ -78,7 +78,7 @@ class A2CBase(BaseAlgorithm):
             print(f'Exact experiment name requested from command line: {full_experiment_name}')
             self.experiment_name = full_experiment_name
         else:
-            self.experiment_name = config['name'] + pbt_str + datetime.now().strftime("_%d-%H-%M-%S")
+            self.experiment_name = config['name'] + pbt_str + datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
 
         self.config = config
         self.algo_observer = config['features']['observer']
