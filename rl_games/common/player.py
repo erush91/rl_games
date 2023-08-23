@@ -81,7 +81,7 @@ class BasePlayer(object):
         self.export_data = self.player_config.get('export_data', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
-        if self.env.cfg['name'] == 'AnymalTerrain':
+        if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
             self.max_steps = 1001 # 3001 # 1501 # 10001 # 1001 # 108000 // 4
         if self.env.cfg['name'] == 'ShadowHand':
             self.max_steps = 1001
@@ -275,7 +275,7 @@ class BasePlayer(object):
             ('C_GRU_HX', DIM_C_GRU_HX),
         ])
 
-        if self.env.cfg['name'] == 'AnymalTerrain':
+        if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
             new_tensor_specs = OrderedDict()
             for key, value in tensor_specs.items():
                 if key == 'ACT':  # Add 'FT_FORCE' after 'ACT'
@@ -329,7 +329,7 @@ class BasePlayer(object):
         if has_masks_func:
             has_masks = self.env.has_action_mask()
 
-        if self.config['name'] == "AnymalTerrain":
+        if self.config['name'] == "AnymalTerrain" or self.config['name'] == "A1Terrain":
             tensor_dict['ACT']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_anymalterrain.csv', header=None).values[:,0]
             tensor_dict['OBS']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_anymalterrain.csv', header=None).values[:,0]
 
@@ -600,7 +600,7 @@ class BasePlayer(object):
                     # condition = torch.arange(self.env.num_environments / 5).repeat(5)
                     time = torch.Tensor([t * self.env.dt]).repeat(self.env.num_environments)
 
-                    if self.env.cfg['name'] == 'AnymalTerrain':
+                    if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
                         tensor_dict['FT_FORCE']['data'][t,:,:] = info['info']
                     tensor_dict['OBS']['data'][t,:,:] = obses[:,:DIM_OBS]
                     tensor_dict['ACT']['data'][t,:,:] = action
@@ -685,8 +685,8 @@ class BasePlayer(object):
             df.columns = columns
             df.to_csv(name + '.csv')
 
-        t0 = 0 # 1000 # 500 # 9500 # 950 # 100 # 500
-        tf = 1000 # 3000 # 1500 # 1500 # 10000 # 1000 # 600 # 527
+        t0 = 400 # 1000 # 500 # 9500 # 950 # 100 # 500
+        tf = 900 # 3000 # 1500 # 1500 # 10000 # 1000 # 600 # 527
 
         if self.export_data:
             
@@ -707,7 +707,7 @@ class BasePlayer(object):
             # Create a folder name using the current date and time
             date_str = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
 
-            if self.env.cfg['name'] == 'AnymalTerrain':
+            if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
                 exp_str = f"_u[\
                     {self.env.specified_command_x_range[0]},\
                     {self.env.specified_command_x_range[1]},\
@@ -735,8 +735,12 @@ class BasePlayer(object):
             # Remove the spaces from the string
             exp_str = exp_str.replace(' ', '')
             
-            # create folder
-            p = date_str + exp_str
+            # create data folder (if it does not exist)
+            p_data = Path().resolve() / 'data'
+            p_data.mkdir(exist_ok=True)
+
+            # create specific folder
+            p =  date_str + exp_str
             p = Path().resolve() / 'data' / p
             p.mkdir(exist_ok=True)
 
@@ -746,6 +750,8 @@ class BasePlayer(object):
             # export the model used for data collection
             with open(p.joinpath('model.txt'), 'w') as file:
                 file.write(self.config['name'])
+
+            self.env.close_viewer()
 
             # # Normalize the data!
             # scaler = sklearn.preprocessing.StandardScaler()
