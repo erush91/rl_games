@@ -45,6 +45,12 @@ class PpoPlayerContinuous(BasePlayer):
         if self.has_batch_dimension == False:
             obs = unsqueeze_obs(obs)
         obs = self._preproc_obs(obs)
+
+        if neural_obs_override != None:
+            if self.has_batch_dimension == False:
+                neural_obs_override = unsqueeze_obs(neural_obs_override)
+            neural_obs_override = self._preproc_obs(neural_obs_override)
+        
         input_dict = {
             'is_train': False,
             'prev_actions': None, 

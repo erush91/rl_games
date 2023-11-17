@@ -316,6 +316,10 @@ class A2CBuilder(NetworkBuilder):
                 override_states_in = override_dict['rnn_states_in']
                 override_states_out = override_dict['rnn_states_out']
 
+                override_flag = False
+                if override_obs != None or override_states_in != None or override_states_out != None:
+                    override_flag = True
+
                 ####### GENE: Added code #######
                 # OVERRIDE OBS (SENSORY) STATE INPUT TO RNN?
                 if override_obs != None:
@@ -355,7 +359,8 @@ class A2CBuilder(NetworkBuilder):
                     # a_out1[:,36:176] = 0 # depths 95% (yaws too much, would be fixed by timing the perturbation)
                     # a_out1[:,176:] = 0 # torques 100%
 
-                    a_out1.requires_grad = True
+                    if not override_flag:
+                        a_out1.requires_grad = True
 
                     a_out2 = self.actor_cnn(a_out1)
                     a_out3 = a_out2.contiguous().view(a_out2.size(0), -1)
@@ -477,48 +482,50 @@ class A2CBuilder(NetworkBuilder):
                         else:
                             sigma = self.sigma_act(self.sigma(a_out_temp6))
 
-                        # ### del(actions)/del(cx_specific)
-                        # # mu.backward(torch.ones_like(mu))
+                        if not override_flag:
 
-                        # ### del(action_RHhip)/del(obs,hc_in,hc_out)
-                        # mu[:,9].backward(torch.ones_like(mu[:,9]))
+                            ### del(actions)/del(cx_specific)
+                            # mu.backward(torch.ones_like(mu))
 
-                        # # obs
-                        # with open('/home/gene/Pictures/h_obs.csv', "a") as file:
-                        #     # Append the NumPy array as a new row in the CSV file
-                        #     np.savetxt(file, a_out1.detach().cpu().numpy(), delimiter=',', fmt='%f')
-                        # with open('/home/gene/Pictures/h_obs_grad.csv', "a") as file:
-                        #     # Append the NumPy array as a new row in the CSV file
-                        #     np.savetxt(file, a_out1.grad.detach().cpu().numpy(), delimiter=',', fmt='%f')
+                            ### del(action_RHhip)/del(obs,hc_in,hc_out)
+                            mu[:,9].backward(torch.ones_like(mu[:,9]))
 
-                        # # hn_in
-                        # with open('/home/gene/Pictures/hn_in.csv', "a") as file:
-                        #     # Append the NumPy array as a new row in the CSV file
-                        #     np.savetxt(file, a_states[0][0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
-                        # with open('/home/gene/Pictures/hn_in_grad.csv', "a") as file:
-                        #     # Append the NumPy array as a new row in the CSV file
-                        #     np.savetxt(file, a_states[0].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+                            # obs
+                            with open('/home/gene/Pictures/h_obs.csv', "a") as file:
+                                # Append the NumPy array as a new row in the CSV file
+                                np.savetxt(file, a_out1.detach().cpu().numpy(), delimiter=',', fmt='%f')
+                            with open('/home/gene/Pictures/h_obs_grad.csv', "a") as file:
+                                # Append the NumPy array as a new row in the CSV file
+                                np.savetxt(file, a_out1.grad.detach().cpu().numpy(), delimiter=',', fmt='%f')
 
-                        # # cn_in
-                        # with open('/home/gene/Pictures/cn_in.csv', "a") as file:
-                        #     # Append the NumPy array as a new row in the CSV file
-                        #     np.savetxt(file, a_states[1][0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
-                        # with open('/home/gene/Pictures/cn_in_grad.csv', "a") as file:
-                        #     # Append the NumPy array as a new row in the CSV file
-                        #     np.savetxt(file, a_states[1].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+                            # hn_in
+                            with open('/home/gene/Pictures/hn_in.csv', "a") as file:
+                                # Append the NumPy array as a new row in the CSV file
+                                np.savetxt(file, a_states[0][0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
+                            with open('/home/gene/Pictures/hn_in_grad.csv', "a") as file:
+                                # Append the NumPy array as a new row in the CSV file
+                                np.savetxt(file, a_states[0].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
 
-                        # # hc_out
-                        # with open('/home/gene/Pictures/hc_out.csv', "a") as file:
-                        #     # Append the NumPy array as a new row in the CSV file
-                        #     np.savetxt(file, a_out_temp4[0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
-                        # with open('/home/gene/Pictures/hc_out_grad.csv', "a") as file:
-                        #     # Append the NumPy array as a new row in the CSV file
-                        #     np.savetxt(file, a_out_temp4.grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+                            # cn_in
+                            with open('/home/gene/Pictures/cn_in.csv', "a") as file:
+                                # Append the NumPy array as a new row in the CSV file
+                                np.savetxt(file, a_states[1][0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
+                            with open('/home/gene/Pictures/cn_in_grad.csv', "a") as file:
+                                # Append the NumPy array as a new row in the CSV file
+                                np.savetxt(file, a_states[1].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
 
-                        # a_out1.grad.zero_()
-                        # a_states[0].grad.zero_()
-                        # a_states[1].grad.zero_()
-                        # a_out_temp4.grad.zero_()
+                            # hc_out
+                            with open('/home/gene/Pictures/hc_out.csv', "a") as file:
+                                # Append the NumPy array as a new row in the CSV file
+                                np.savetxt(file, a_out_temp4[0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
+                            with open('/home/gene/Pictures/hc_out_grad.csv', "a") as file:
+                                # Append the NumPy array as a new row in the CSV file
+                                np.savetxt(file, a_out_temp4.grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+
+                            a_out1.grad.zero_()
+                            a_states[0].grad.zero_()
+                            a_states[1].grad.zero_()
+                            a_out_temp4.grad.zero_()
                         return mu, sigma, value, states_out, self.selected_out
                 else:
                     out = obs

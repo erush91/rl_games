@@ -552,22 +552,21 @@ class BasePlayer(object):
 
                     ### NEURAL OVERRIDE OBSERVATIONS ###
                     # neural_obs_override = obses
-                    # obses[:,0]=0 # u 234/400 = 58.5%
-                    # obses[:,1]=0 # v 0/400 = 0%
-                    # obses[:,2]=0 # w 324/400 = 81%
-                    # obses[:,3]=0 # p 98/400 = 24.5%
-                    # obses[:,4]=0 # q 398/400 = 99.5%
-                    # obses[:,5]=0 # r 395/400 = 98.75%
-                    # obses[:,6]=0 # cos(pitch) 397/400 = 99.25%
-                    # obses[:,7]=0 # cos(roll) 104/400 = 26.5%
-                    # obses[:,8]=0 # cos(yaw)  399/400 = 99.75%
-                    # obses[:,9]=0 # u* 331/400 = 82.75%
-                    # obses[:,10]=0 # v* 400/400 = 100%
-                    # obses[:,11]=0 r* # 400/400 = 100%
-                    # obses[:,12:24]=0 # joint pos 9/400 = 2.25%
-                    # obses[:,24:36]=0 # joint vel 290/400 = 72.5%
-                    # obses[:,136:176]=0 # height 397/400 = 99.25%
-                
+                    # neural_obs_override[self.env.perturb_started, 0] = 0 # u  316/400 = 79% (because timing does make a difference!)
+                    # neural_obs_override[self.env.perturb_started, 1] = 0 # v  0/400 = 0%
+                    # neural_obs_override[self.env.perturb_started, 2] = 0 # w  306/400 = 76.5%
+                    # neural_obs_override[self.env.perturb_started, 3] = 0 # p  37/400 = 9.25%
+                    # neural_obs_override[self.env.perturb_started, 4] = 0 # q  397/400 = 99.25%
+                    # neural_obs_override[self.env.perturb_started, 5] = 0 # r  396/400  = 99%
+                    # neural_obs_override[self.env.perturb_started, 6] = 0 # cos(pitch)  387/400 = 96.75%
+                    # neural_obs_override[self.env.perturb_started, 7] = 0 # cos(roll)  237 = 59.25%
+                    # neural_obs_override[self.env.perturb_started, 8] = 0 # cos(yaw)  400/400 = 100%
+                    # neural_obs_override[self.env.perturb_started, 9] = 0 # u*  400/400 = 100%
+                    # neural_obs_override[self.env.perturb_started, 10] = 0 # v*  400/400 = 100%
+                    # neural_obs_override[self.env.perturb_started, 11] = 0 # r*  400/400 = 100%
+                    # neural_obs_override[self.env.perturb_started, 12:24] = 0 # joint pos  0/400 = 0%
+                    # neural_obs_override[self.env.perturb_started, 24:36] = 0 # joint vel  315/400 = 78.75%
+                    # neural_obs_override[self.env.perturb_started, 136:176] = 0 # height  400/400 = 100%
                     
                     ### NEURAL OVERRIDE STATES IN ###
                     # neural_state_in_override = self.states #[self.states[0].detach().to('cpu'), self.states[1].detach().to('cpu')]
@@ -578,11 +577,11 @@ class BasePlayer(object):
 
 
                     ### NEURAL OVERRIDE STATES OUT ###
-                    neural_state_out_override = self.states #[self.states[0].detach().to('cpu'), self.states[1].detach().to('cpu')]
-                    neural_state_out_override[0][0,:,13] = self.env.perturb_started * 0.205488821246418
-                    neural_state_out_override[0][0,:,56] = self.env.perturb_started * 0.22776731317200002
-                    neural_state_out_override[0][0,:,101] = self.env.perturb_started * 0.59731554871306
-                    neural_state_out_override[0][0,:,108] = self.env.perturb_started * -0.199395715246838
+                    # neural_state_out_override = self.states #[self.states[0].detach().to('cpu'), self.states[1].detach().to('cpu')]
+                    # neural_state_out_override[0][0,:,13] = self.env.perturb_started * 0.205488821246418
+                    # neural_state_out_override[0][0,:,56] = self.env.perturb_started * 0.22776731317200002
+                    # neural_state_out_override[0][0,:,101] = self.env.perturb_started * 0.59731554871306
+                    # neural_state_out_override[0][0,:,108] = self.env.perturb_started * -0.199395715246838
 
                     action = self.get_action(obses, is_deterministic, neural_obs_override, neural_state_in_override, neural_state_out_override) # neural_obs_override,neural_state_override
                     
