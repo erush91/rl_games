@@ -183,7 +183,7 @@ class BasePlayer(object):
     def create_env(self):
         return env_configurations.configurations[self.env_name]['env_creator'](**self.env_config)
 
-    def get_action(self, obs, is_deterministic=False, neural_override=None):
+    def get_action(self, obs, is_deterministic=False, neural_obs_override=None, neural_state_override=None):
         raise NotImplementedError('step')
 
     def get_masked_action(self, obs, mask, is_deterministic=False):
@@ -543,7 +543,7 @@ class BasePlayer(object):
                         a_c_last = self.states[1][0,:,:] # self.layers_out['a_rnn'][1][1][0,0,:]
                         c_h_last = self.states[2][0,:,:] # self.layers_out['c_rnn'][1][0][0,0,:]
                         c_c_last = self.states[3][0,:,:] # self.layers_out['c_rnn'][1][1][0,0,:]
-                    obses[:,9]=-1000
+
                     # if t > 250:
                         # print(obses[:,0].mean())
                     # obses[:,0]=0
@@ -562,8 +562,30 @@ class BasePlayer(object):
                         # obses[:,12:24]=0 # joint pos 9/400 = 2.25%
                         # obses[:,24:36]=0 # joint vel 290/400 = 72.5%
                         # obses[:,136:176]=0 # height 397/400 = 99.25%
-                    # neural_override=None
-                    action = self.get_action(obses, is_deterministic)
+                    
+                    # neural_state_override = torch.ones_like(self.states[1][0,:,:].cpu())
+
+                    
+                    neural_obs_override = None
+                    neural_state_in_override = None
+                    neural_state_out_override = None
+
+                    # neural_obs_override = obses
+                    
+                    # neural_state_in_override = self.states #[self.states[0].detach().to('cpu'), self.states[1].detach().to('cpu')]
+                    # neural_state_in_override[0][0,:,13] = 0.205488821246418
+                    # neural_state_in_override[0][0,:,56] = 0.22776731317200002
+                    # neural_state_in_override[0][0,:,101] = 0.59731554871306
+                    # neural_state_in_override[0][0,:,108] = -0.199395715246838
+
+
+                    # neural_state_out_override = self.states #[self.states[0].detach().to('cpu'), self.states[1].detach().to('cpu')]
+                    # neural_state_out_override[0][0,:,13] = 0.205488821246418
+                    # neural_state_out_override[0][0,:,56] = 0.22776731317200002
+                    # neural_state_out_override[0][0,:,101] = 0.59731554871306
+                    # neural_state_out_override[0][0,:,108] = -0.199395715246838
+
+                    action = self.get_action(obses, is_deterministic, neural_obs_override, neural_state_in_override, neural_state_out_override) # neural_obs_override,neural_state_override
                     
                     # compute internal LSTM states - confirmed that both c1 and c2 contribute, (f != ones) does not forget everything : )
                     if rnn_type == 'lstm':

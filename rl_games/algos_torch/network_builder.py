@@ -301,7 +301,7 @@ class A2CBuilder(NetworkBuilder):
                 self.selected_out[layer_name] = output
             return hook
 
-        def forward(self, obs_dict, neural_override):
+        def forward(self, obs_dict, override_dict):
             with torch.enable_grad():
                 self.a_rnn.train()
                     
@@ -310,6 +310,21 @@ class A2CBuilder(NetworkBuilder):
                 seq_length = obs_dict.get('seq_length', 1)
                 dones = obs_dict.get('dones', None)
                 bptt_len = obs_dict.get('bptt_len', 0)
+
+                ####### GENE: Added code #######
+                override_obs = override_dict['obs']
+                override_states_in = override_dict['rnn_states_in']
+                override_states_out = override_dict['rnn_states_out']
+
+                ####### GENE: Added code #######
+                # OVERRIDE OBS (SENSORY) STATE INPUT TO RNN?
+                if override_obs != None:
+                    obs = override_obs
+
+                ####### GENE: Added code #######
+                # OVERRIDE RNN NEURAL STATE INPUT TO RNN?
+                if override_states_in != None:
+                    states = override_states_in
 
                 if self.has_cnn:
                     # for obs shape 4
@@ -370,6 +385,7 @@ class A2CBuilder(NetworkBuilder):
                             dones = dones.reshape(num_seqs, seq_length, -1)
                             dones = dones.transpose(0,1)
 
+
                         # PASS IN NEURAL_OVERRIDE TO FORWARD FUNCTION IN ORDER TO USE SCL_MEAN
                         # states[0][0,:,:] = 0
                         # states[1][0,:,:] = 0
@@ -402,7 +418,16 @@ class A2CBuilder(NetworkBuilder):
                         
 
                         a_out_temp4, a_states_out = self.a_rnn(a_out_temp3, a_states, dones, bptt_len)
+                        c_out_temp4, c_states_out = self.c_rnn(c_out_temp3, c_states, dones, bptt_len)
 
+                        ####### GENE: Added code #######
+                        # OVERRIDE RNN NEURAL STATE OUTPUT FROM RNN?
+                        if override_states_out != None:
+                            a_out_temp4 = override_states_out[0]
+                            c_out_temp4 = override_states_out[1]
+
+                            # Create a new tensor with the same shape as the original tensor
+                            # a_out_temp4 = override_states.clone()
 
                         # a_out_temp4[0,:,13] = 0.205488821246418
                         # # # a_out_temp4[0,:,47] = 0.5477552639
@@ -415,7 +440,6 @@ class A2CBuilder(NetworkBuilder):
                         # a_out_temp4[0,:,108] = -0.199395715246838
                         # # # a_out_temp4[0,:,114] = 0.0377013023041424
 
-                        c_out_temp4, c_states_out = self.c_rnn(c_out_temp3, c_states, dones, bptt_len)
                         a_out_temp4.retain_grad()
                         a_out_temp5 = a_out_temp4.transpose(0,1)
                         c_out_temp5 = c_out_temp4.transpose(0,1)
@@ -456,8 +480,9 @@ class A2CBuilder(NetworkBuilder):
                         ### del(actions)/del(cx_specific)
                         # mu.backward(torch.ones_like(mu))
 
-                        ## del(action_RHhip)/del(obs,hc_in,hc_out)
+                        ### del(action_RHhip)/del(obs,hc_in,hc_out)
                         mu[:,9].backward(torch.ones_like(mu[:,9]))
+
                         # obs
                         # with open('/home/gene/Pictures/h_obs.csv', "a") as file:
                         #     # Append the NumPy array as a new row in the CSV file
@@ -465,6 +490,7 @@ class A2CBuilder(NetworkBuilder):
                         # with open('/home/gene/Pictures/h_obs_grad.csv', "a") as file:
                         #     # Append the NumPy array as a new row in the CSV file
                         #     np.savetxt(file, a_out1.grad.detach().cpu().numpy(), delimiter=',', fmt='%f')
+
                         # # hn_in
                         # with open('/home/gene/Pictures/hn_in.csv', "a") as file:
                         #     # Append the NumPy array as a new row in the CSV file
@@ -472,6 +498,7 @@ class A2CBuilder(NetworkBuilder):
                         # with open('/home/gene/Pictures/hn_in_grad.csv', "a") as file:
                         #     # Append the NumPy array as a new row in the CSV file
                         #     np.savetxt(file, a_states[0].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+
                         # # cn_in
                         # with open('/home/gene/Pictures/cn_in.csv', "a") as file:
                         #     # Append the NumPy array as a new row in the CSV file
@@ -479,6 +506,7 @@ class A2CBuilder(NetworkBuilder):
                         # with open('/home/gene/Pictures/cn_in_grad.csv', "a") as file:
                         #     # Append the NumPy array as a new row in the CSV file
                         #     np.savetxt(file, a_states[1].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+
                         # # hc_out
                         # with open('/home/gene/Pictures/hc_out.csv', "a") as file:
                         #     # Append the NumPy array as a new row in the CSV file
@@ -486,6 +514,7 @@ class A2CBuilder(NetworkBuilder):
                         # with open('/home/gene/Pictures/hc_out_grad.csv', "a") as file:
                         #     # Append the NumPy array as a new row in the CSV file
                         #     np.savetxt(file, a_out_temp4.grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+
                         a_out1.grad.zero_()
                         a_states[0].grad.zero_()
                         a_states[1].grad.zero_()

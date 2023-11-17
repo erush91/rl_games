@@ -41,7 +41,7 @@ class PpoPlayerContinuous(BasePlayer):
         self.model.eval()
         self.is_rnn = self.model.is_rnn()
 
-    def get_action(self, obs, is_deterministic = False, neural_override=None):
+    def get_action(self, obs, is_deterministic = False, neural_obs_override=None, neural_state_in_override=None, neural_state_out_override=None):
         if self.has_batch_dimension == False:
             obs = unsqueeze_obs(obs)
         obs = self._preproc_obs(obs)
@@ -51,8 +51,13 @@ class PpoPlayerContinuous(BasePlayer):
             'obs' : obs,
             'rnn_states' : self.states
         }
+        override_dict = {
+            'obs' : neural_obs_override,
+            'rnn_states_in' : neural_state_in_override,
+            'rnn_states_out' : neural_state_out_override
+        }
         with torch.no_grad():
-            res_dict = self.model(input_dict, neural_override)
+            res_dict = self.model(input_dict, override_dict)
         mu = res_dict['mus'].requires_grad_(True)
         # action = res_dict['actions']
         action = res_dict['actions'].requires_grad_(True)
