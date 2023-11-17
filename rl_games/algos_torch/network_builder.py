@@ -477,13 +477,13 @@ class A2CBuilder(NetworkBuilder):
                         else:
                             sigma = self.sigma_act(self.sigma(a_out_temp6))
 
-                        ### del(actions)/del(cx_specific)
-                        # mu.backward(torch.ones_like(mu))
+                        # ### del(actions)/del(cx_specific)
+                        # # mu.backward(torch.ones_like(mu))
 
-                        ### del(action_RHhip)/del(obs,hc_in,hc_out)
-                        mu[:,9].backward(torch.ones_like(mu[:,9]))
+                        # ### del(action_RHhip)/del(obs,hc_in,hc_out)
+                        # mu[:,9].backward(torch.ones_like(mu[:,9]))
 
-                        # obs
+                        # # obs
                         # with open('/home/gene/Pictures/h_obs.csv', "a") as file:
                         #     # Append the NumPy array as a new row in the CSV file
                         #     np.savetxt(file, a_out1.detach().cpu().numpy(), delimiter=',', fmt='%f')
@@ -515,10 +515,10 @@ class A2CBuilder(NetworkBuilder):
                         #     # Append the NumPy array as a new row in the CSV file
                         #     np.savetxt(file, a_out_temp4.grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
 
-                        a_out1.grad.zero_()
-                        a_states[0].grad.zero_()
-                        a_states[1].grad.zero_()
-                        a_out_temp4.grad.zero_()
+                        # a_out1.grad.zero_()
+                        # a_states[0].grad.zero_()
+                        # a_states[1].grad.zero_()
+                        # a_out_temp4.grad.zero_()
                         return mu, sigma, value, states_out, self.selected_out
                 else:
                     out = obs
