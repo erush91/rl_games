@@ -323,12 +323,13 @@ class A2CBuilder(NetworkBuilder):
                 ####### GENE: Added code #######
                 # OVERRIDE OBS (SENSORY) STATE INPUT TO RNN?
                 if override_obs != None:
-                    obs = override_obs
+                    obs[~override_obs.isnan()] = override_obs[~override_obs.isnan()]
 
                 ####### GENE: Added code #######
                 # OVERRIDE RNN NEURAL STATE INPUT TO RNN?
                 if override_states_in != None:
-                    states = override_states_in
+                    states[0][~override_states_in[0].isnan()] = override_states_in[0][~override_states_in[0].isnan()]
+                    states[1][~override_states_in[1].isnan()] = override_states_in[1][~override_states_in[1].isnan()]
 
                 if self.has_cnn:
                     # for obs shape 4
@@ -428,11 +429,7 @@ class A2CBuilder(NetworkBuilder):
                         ####### GENE: Added code #######
                         # OVERRIDE RNN NEURAL STATE OUTPUT FROM RNN?
                         if override_states_out != None:
-                            a_out_temp4 = override_states_out[0]
-                            c_out_temp4 = override_states_out[1]
-
-                            # Create a new tensor with the same shape as the original tensor
-                            # a_out_temp4 = override_states.clone()
+                            a_out_temp4[~override_states_out[0].isnan()] = override_states_out[0][~override_states_out[0].isnan()]
 
                         # a_out_temp4[0,:,13] = 0.205488821246418
                         # # # a_out_temp4[0,:,47] = 0.5477552639

@@ -506,6 +506,8 @@ class BasePlayer(object):
 
             ROBOT_ID_PLOT = 0            
 
+            N_ROBOTS = 400
+
             # Sample settings
             N_hn = 0 # Number of random numbers for hn
             N_cn = 0  # Number of random numbers for cn
@@ -546,7 +548,7 @@ class BasePlayer(object):
                     neural_state_in_override = None
                     neural_state_out_override = None
 
-                    ### NEURAL OVERRIDE OBSERVATIONS ###
+                    ### NEURAL OVERRIDE OBSERVATIONS ### (OLD)
                     # neural_obs_override = obses
                     # neural_obs_override[ROBOT_ABLATION_IDX, 0] = 0 # u  316/400 = 79% (because timing does make a difference!)
                     # neural_obs_override[ROBOT_ABLATION_IDX, 1] = 0 # v  0/400 = 0%
@@ -563,14 +565,34 @@ class BasePlayer(object):
                     # neural_obs_override[ROBOT_ABLATION_IDX, 12:24] = 0 # joint pos  0/400 = 0%
                     # neural_obs_override[ROBOT_ABLATION_IDX, 24:36] = 0 # joint vel  315/400 = 78.75%
                     # neural_obs_override[ROBOT_ABLATION_IDX, 136:176] = 0 # height  400/400 = 100%
+
+                    ### NEURAL OVERRIDE OBSERVATIONS ### (NEW)
+                    # neural_obs_override = torch.full((N_ROBOTS, DIM_OBS + DIM_ACT), torch.nan, device='cuda')
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 0] = 0 # u  317/400 = % (because timing does make a difference!)
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 1] = 0 # v  0/400 = 0%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 2] = 0 # w  292/400 = %
+
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 3] = 0 # p  37/400 = 9.25%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 4] = 0 # q  397/400 = 99.25%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 5] = 0 # r  396/400  = 99%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 6] = 0 # cos(pitch)  387/400 = 96.75%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 7] = 0 # cos(roll)  237 = 59.25%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 8] = 0 # cos(yaw)  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 9] = 0 # u*  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 10] = 0 # v*  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 11] = 0 # r*  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 12:24] = 0 # joint pos  0/400 = 0%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 24:36] = 0 # joint vel  315/400 = 78.75%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 136:176] = 0 # height  400/400 = 100%
                     
                     ### NEURAL OVERRIDE STATES IN ###
-                    # SAMPLING-BASED METHOD (160, 168, 170 / 400)
-                    neural_state_in_override = self.states
-                    neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 6] = scl_hc.mean_[128+6] # 0.205488821246418
-                    neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 18] = scl_hc.mean_[128+18] # 0.22776731317200002
-                    neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 73] = scl_hc.mean_[128+73] # 0.59731554871306
-                    neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 94] = scl_hc.mean_[128+94] # -0.199395715246838
+                    # SAMPLING-BASED METHOD (171, 159, 158 / 400)
+                    # neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 6] = scl_hc.mean_[128+6] # 0.205488821246418
+                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 18] = scl_hc.mean_[128+18] # 0.22776731317200002
+                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 73] = scl_hc.mean_[128+73] # 0.59731554871306
+                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 94] = scl_hc.mean_[128+94] # -0.199395715246838
+
 
                     # #  150/400=38%
                     # indices_cn = [6,18,73,94]
@@ -590,16 +612,35 @@ class BasePlayer(object):
                     ### NEURAL OVERRIDE STATES OUT ###
                     # Four neurons most implicated in RH hip extension 50/400 = 12.5% (used to be 180/400 = 45% when ablate these neurons for entire trial)
 
-                    # neural_state_out_override = self.states
-                    # neural_state_out_override[1][:, ROBOT_ABLATION_IDX, 6] = scl_hc.mean_[6] # 0.205488821246418
-                    # neural_state_out_override[1][:, ROBOT_ABLATION_IDX, 18] = scl_hc.mean_[18] # 0.22776731317200002
-                    # neural_state_out_override[1][:, ROBOT_ABLATION_IDX, 73] = scl_hc.mean_[73] # 0.59731554871306
-                    # neural_state_out_override[1][:, ROBOT_ABLATION_IDX, 94] = scl_hc.mean_[94] # -0.199395715246838
-
+                    # # SAMPLING-BASED METHOD (23, 24, 22 / 400) BUT THIS IS OVERRIDING ALL VALUES!!
+                    # neural_state_out_override = self.states # [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan)]
                     # neural_state_out_override[1][:, self.env.perturb_started, 6] = scl_hc.mean_[128+6] # 0.205488821246418
                     # neural_state_out_override[1][:, self.env.perturb_started, 18] = scl_hc.mean_[128+18] # 0.22776731317200002
                     # neural_state_out_override[1][:, self.env.perturb_started, 73] = scl_hc.mean_[128+73] # 0.59731554871306
                     # neural_state_out_override[1][:, self.env.perturb_started, 94] = scl_hc.mean_[128+94] # -0.199395715246838
+
+
+                    # # SAMPLING-BASED METHOD ( / 400) FIXED SO ONLY OVERRIDING SPECIFIC VALUES
+                    neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    # neural_state_out_override[1][:, self.env.perturb_started, 6] = scl_hc.mean_[128+6] # 0.205488821246418
+                    # neural_state_out_override[1][:, self.env.perturb_started, 18] = scl_hc.mean_[128+18] # 0.22776731317200002
+                    # neural_state_out_override[1][:, self.env.perturb_started, 73] = scl_hc.mean_[128+73] # 0.59731554871306
+                    # neural_state_out_override[1][:, self.env.perturb_started, 94] = scl_hc.mean_[128+94] # -0.199395715246838
+
+                    # # (172, 166 / 400) # WHEN ABLATED FOR ALL TIME (AGREES WITH FRONTIERS PAPER)
+                    # # (381 / 400) # WHEN ABLATED DURING AND AFTER PERTURBATION
+                    # # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  < -0.08
+                    neural_state_out_override[0][:, ROBOT_ABLATION_IDX, 13] = scl_hc.mean_[13] # 0.205488821246418
+                    neural_state_out_override[0][:, ROBOT_ABLATION_IDX, 56] = scl_hc.mean_[56] # 0.22776731317200002
+                    neural_state_out_override[0][:, ROBOT_ABLATION_IDX, 101] = scl_hc.mean_[101] # 0.59731554871306
+                    neural_state_out_override[0][:, ROBOT_ABLATION_IDX, 108] = scl_hc.mean_[108] # -0.199395715246838
+
+                    neural_state_in_override[0][:, ROBOT_ABLATION_IDX, 13] = scl_hc.mean_[13] # 0.205488821246418
+                    neural_state_in_override[0][:, ROBOT_ABLATION_IDX, 56] = scl_hc.mean_[56] # 0.22776731317200002
+                    neural_state_in_override[0][:, ROBOT_ABLATION_IDX, 101] = scl_hc.mean_[101] # 0.59731554871306
+                    neural_state_in_override[0][:, ROBOT_ABLATION_IDX, 108] = scl_hc.mean_[108] # -0.199395715246838
+
 
                     action = self.get_action(obses, is_deterministic, neural_obs_override, neural_state_in_override, neural_state_out_override) # neural_obs_override,neural_state_override
                     
@@ -631,6 +672,7 @@ class BasePlayer(object):
                         tensor_dict['C_LSTM_C2X']['data'][t,:,:] = c2
                         
                 obses, r, done, info = self.env_step(self.env, action)
+
 
                 if t > 250:
 
