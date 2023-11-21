@@ -195,13 +195,7 @@ class BasePlayer(object):
     def init_rnn(self):
         if self.is_rnn:
             rnn_states = self.model.get_default_rnn_state()
-            self.states = [torch.zeros((s.size()[0], self.batch_size, s.size(
-            )[2]), dtype=torch.float32, requires_grad=True).to(self.device) for s in rnn_states]
-            print('hi')
-            # self.states[0].requires_grad = True
-            # self.states[1].requires_grad = True
-            # self.states[2].requires_grad = True
-            # self.states[3].requires_grad = True
+            self.states = [torch.zeros((s.size()[0], self.batch_size, s.size()[2]), dtype=torch.float32, requires_grad=True).to(self.device) for s in rnn_states]
 
     def run(self):
         n_games = self.games_num
@@ -422,10 +416,6 @@ class BasePlayer(object):
 
             print_game_res = False
 
-
-
-            cx_pc_last = None
-
             import pickle as pk
             # AnymalTerrain (3) (perturb longer w/ noise) (with HC = (HC, CX))
             DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-05-31_09-02-37_u[-1.0,1.0,21]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[10]/'
@@ -514,11 +504,7 @@ class BasePlayer(object):
             print('rand_hn_idx:', rand_hn_idx)
             print('rand_cn_idx:', rand_cn_idx)
 
-            ROBOT_ID_START = 0
-            ROBOT_ID_END = 99
-            ROBOT_PERTURB_IDX = np.arange(0, 256, 1) # np.arange(0, 512, 2)
-            HC_PERTURB_IDX = np.arange(0, 256, 1)
-            
+            ROBOT_ID_PLOT = 0            
 
             # Sample settings
             N_hn = 0 # Number of random numbers for hn
@@ -527,7 +513,6 @@ class BasePlayer(object):
             # Pre-generating indices
             static_indices_hn = [random.sample(range(0, 128), N_hn) for _ in range(400)]
             static_indices_cn = [random.sample(range(0, 128), N_cn) for _ in range(400)]
-
 
             for t in range(self.max_steps - 1):
                 print("t:", t)
@@ -544,7 +529,18 @@ class BasePlayer(object):
                         c_h_last = self.states[2][0,:,:] # self.layers_out['c_rnn'][1][0][0,0,:]
                         c_c_last = self.states[3][0,:,:] # self.layers_out['c_rnn'][1][1][0,0,:]
                     
-                    # neural_state_override = torch.ones_like(self.states[1][0,:,:].cpu())
+
+                    ROBOT_PERTURB_IDX = None
+                    ABLATE_FOR_ENTIRE_TRIAL = False
+                    ABLATE_DURING_AND_AFTER_PERTURB = True
+
+                    # ABLATION NEURONS FOR ENTIRITY OF TRIAL: BEFORE, DURING, AND AFTER PERTURBATION)
+                    if ABLATE_FOR_ENTIRE_TRIAL:
+                        ROBOT_ABLATION_IDX = slice(None)
+
+                    # ABLATION NEURONS FOR END OF TRIAL (DURING, AND AFTER PERTURBATION)
+                    elif ABLATE_DURING_AND_AFTER_PERTURB:
+                        ROBOT_ABLATION_IDX = self.env.perturb_started
 
                     neural_obs_override = None
                     neural_state_in_override = None
@@ -552,36 +548,58 @@ class BasePlayer(object):
 
                     ### NEURAL OVERRIDE OBSERVATIONS ###
                     # neural_obs_override = obses
-                    # neural_obs_override[self.env.perturb_started, 0] = 0 # u  316/400 = 79% (because timing does make a difference!)
-                    # neural_obs_override[self.env.perturb_started, 1] = 0 # v  0/400 = 0%
-                    # neural_obs_override[self.env.perturb_started, 2] = 0 # w  306/400 = 76.5%
-                    # neural_obs_override[self.env.perturb_started, 3] = 0 # p  37/400 = 9.25%
-                    # neural_obs_override[self.env.perturb_started, 4] = 0 # q  397/400 = 99.25%
-                    # neural_obs_override[self.env.perturb_started, 5] = 0 # r  396/400  = 99%
-                    # neural_obs_override[self.env.perturb_started, 6] = 0 # cos(pitch)  387/400 = 96.75%
-                    # neural_obs_override[self.env.perturb_started, 7] = 0 # cos(roll)  237 = 59.25%
-                    # neural_obs_override[self.env.perturb_started, 8] = 0 # cos(yaw)  400/400 = 100%
-                    # neural_obs_override[self.env.perturb_started, 9] = 0 # u*  400/400 = 100%
-                    # neural_obs_override[self.env.perturb_started, 10] = 0 # v*  400/400 = 100%
-                    # neural_obs_override[self.env.perturb_started, 11] = 0 # r*  400/400 = 100%
-                    # neural_obs_override[self.env.perturb_started, 12:24] = 0 # joint pos  0/400 = 0%
-                    # neural_obs_override[self.env.perturb_started, 24:36] = 0 # joint vel  315/400 = 78.75%
-                    # neural_obs_override[self.env.perturb_started, 136:176] = 0 # height  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 0] = 0 # u  316/400 = 79% (because timing does make a difference!)
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 1] = 0 # v  0/400 = 0%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 2] = 0 # w  306/400 = 76.5%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 3] = 0 # p  37/400 = 9.25%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 4] = 0 # q  397/400 = 99.25%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 5] = 0 # r  396/400  = 99%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 6] = 0 # cos(pitch)  387/400 = 96.75%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 7] = 0 # cos(roll)  237 = 59.25%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 8] = 0 # cos(yaw)  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 9] = 0 # u*  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 10] = 0 # v*  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 11] = 0 # r*  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 12:24] = 0 # joint pos  0/400 = 0%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 24:36] = 0 # joint vel  315/400 = 78.75%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 136:176] = 0 # height  400/400 = 100%
                     
                     ### NEURAL OVERRIDE STATES IN ###
-                    # neural_state_in_override = self.states #[self.states[0].detach().to('cpu'), self.states[1].detach().to('cpu')]
-                    # neural_state_in_override[0][0,:,13] = (self.env.perturb_idx > 0) * 0.205488821246418
-                    # neural_state_in_override[0][0,:,56] = (self.env.perturb_idx > 0) * 0.22776731317200002
-                    # neural_state_in_override[0][0,:,101] = (self.env.perturb_idx > 0) * 0.59731554871306
-                    # neural_state_in_override[0][0,:,108] = (self.env.perturb_idx > 0) * -0.199395715246838
+                    # SAMPLING-BASED METHOD (160, 168, 170 / 400)
+                    neural_state_in_override = self.states
+                    neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 6] = scl_hc.mean_[128+6] # 0.205488821246418
+                    neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 18] = scl_hc.mean_[128+18] # 0.22776731317200002
+                    neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 73] = scl_hc.mean_[128+73] # 0.59731554871306
+                    neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 94] = scl_hc.mean_[128+94] # -0.199395715246838
+
+                    # #  150/400=38%
+                    # indices_cn = [6,18,73,94]
+                    
+                    # for idx in indices_cn:
+                    #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
+
+                    # Ablate ALL hn
+                    # self.states[0][0,:,:] = torch.from_numpy(scl_hc.mean_[:128]) * torch.ones_like(self.states[0][0,:,:].cpu()) # -3.5BW: 50%
+
+                    # Ablate ALL cn
+                    # self.states[1][0,:,:] = torch.from_numpy(scl_hc.mean_[128:]) * torch.ones_like(self.states[1][0,:,:].cpu()) # -3.5BW: 0%
+                    
+                    
 
 
                     ### NEURAL OVERRIDE STATES OUT ###
-                    # neural_state_out_override = self.states #[self.states[0].detach().to('cpu'), self.states[1].detach().to('cpu')]
-                    # neural_state_out_override[0][0,:,13] = self.env.perturb_started * 0.205488821246418
-                    # neural_state_out_override[0][0,:,56] = self.env.perturb_started * 0.22776731317200002
-                    # neural_state_out_override[0][0,:,101] = self.env.perturb_started * 0.59731554871306
-                    # neural_state_out_override[0][0,:,108] = self.env.perturb_started * -0.199395715246838
+                    # Four neurons most implicated in RH hip extension 50/400 = 12.5% (used to be 180/400 = 45% when ablate these neurons for entire trial)
+
+                    # neural_state_out_override = self.states
+                    # neural_state_out_override[1][:, ROBOT_ABLATION_IDX, 6] = scl_hc.mean_[6] # 0.205488821246418
+                    # neural_state_out_override[1][:, ROBOT_ABLATION_IDX, 18] = scl_hc.mean_[18] # 0.22776731317200002
+                    # neural_state_out_override[1][:, ROBOT_ABLATION_IDX, 73] = scl_hc.mean_[73] # 0.59731554871306
+                    # neural_state_out_override[1][:, ROBOT_ABLATION_IDX, 94] = scl_hc.mean_[94] # -0.199395715246838
+
+                    # neural_state_out_override[1][:, self.env.perturb_started, 6] = scl_hc.mean_[128+6] # 0.205488821246418
+                    # neural_state_out_override[1][:, self.env.perturb_started, 18] = scl_hc.mean_[128+18] # 0.22776731317200002
+                    # neural_state_out_override[1][:, self.env.perturb_started, 73] = scl_hc.mean_[128+73] # 0.59731554871306
+                    # neural_state_out_override[1][:, self.env.perturb_started, 94] = scl_hc.mean_[128+94] # -0.199395715246838
 
                     action = self.get_action(obses, is_deterministic, neural_obs_override, neural_state_in_override, neural_state_out_override) # neural_obs_override,neural_state_override
                     
@@ -614,49 +632,7 @@ class BasePlayer(object):
                         
                 obses, r, done, info = self.env_step(self.env, action)
 
-
-                # # Ablate correlates of diff p
-                # self.states[0][0,:,15] = 0  # [actor lstm cn (short-term memory)
-                # self.states[0][0,:,28] = 0 # [actor lstm cn (short-term memory)
-                # self.states[0][0,:,31] = 0 # [actor lstm cn (short-term memory)
-                # self.states[0][0,:,72] = 0 # [actor lstm cn (short-term memory)
-                # self.states[0][0,:,74] = 0 # [actor lstm cn (short-term memory)
-                # self.states[0][0,:,95] = 0 # [actor lstm cn (short-term memory)
-                # self.states[0][0,:,122] = 0 # [actor lstm cn (short-term memory)
-                # self.states[1][0,:,9] = 0 # [actor lstm cn (short-term memory)
-                # self.states[1][0,:,28] = 0 # [actor lstm cn (short-term memory)
-
-                # # Ablate correlates of diff v
-                # self.states[1][0,:,33] = 0 # [actor lstm cn (short-term memory)
-                # self.states[1][0,:,46] = 0 # [actor lstm cn (short-term memory)
-                # self.states[1][0,:,94] = 0 # [actor lstm cn (short-term memory)
-
-                # Ablate random hn neurons                
-                # self.states[0][0,:,rand_hn_idx] = 0 * torch.ones_like(self.states[0][0,:,rand_hn_idx]) # [actor lstm hn (short-term memory)
-                # self.states[1][0,:,rand_cn_idx] = 0 * torch.ones_like(self.states[0][0,:,rand_cn_idx]) # [actor lstm cn (short-term memory)
-
-                # Ablate first ten cn neurons
-                # self.states[1][0,:,:10] = 0 * torch.rand_like(self.states[0][0,:,:10]) # [actor lstm hn (short-term memory)
-
-                # # Ablate neurons contributing to A_LSTM_HC_PC_001 when disturbance
-                # self.states[0][0,:,107] = 0 # [actor lstm cn (short-term memory)
-                # self.states[0][0,:,114] = 0 # [actor lstm cn (short-term memory)
-
-                # hx = self.states[0][0,:,:]
-                # cx = self.states[1][0,:,:]
-
-                # neural perturbations
-
-                # if t > 100 and t % 130 == 0:
                 if t > 250:
-                    # obses[:,perturb_idx] += 1
-                    # hc_pc[ROBOT_PERTURB_IDX,HC_PERTURB_IDX] += 25
-
-                    # hc_pc[ROBOT_ID_START:ROBOT_ID_END,perturb_idx] += 25 # * cx_pc[:,:256]
-                    # cx_pc[ROBOT_ID_START:ROBOT_ID_END,2] += 1e3 # * cx_pc[:,:256]
-                    # hc_pc[ROBOT_ID_START:ROBOT_ID_END, 0] *= 2.0 # * cx_pc[:,:256]
-                    # hx = torch.tensor(scl_hx.inverse_transform(pca_hx.inverse_transform(hx_pc)), dtype=torch.float32).unsqueeze(dim=0)
-                    # cx = torch.tensor(scl_cx.inverse_transform(pca_cx.inverse_transform(cx_pc)), dtype=torch.float32).unsqueeze(dim=0)
 
                     if t > 250:
                         
@@ -668,9 +644,6 @@ class BasePlayer(object):
                             
                             ### same behavior, just slightly less robust to perturbations
                             # self.model.a2c_network.a_rnn.rnn.weight_hh_l0 *= 0
-
-                        ### robot walks, but a bit slower
-                        # hc_pc[ROBOT_ID_START,:] *= 0 # * cx_pc[:,:256]
 
                     # with torch.no_grad():
                         # self.model.a2c_network.actor_mlp[0].weight[:,0] = torch.nn.Parameter(torch.zeros(512, dtype=torch.float, device="cuda")) # u # run v fast, much less robust
@@ -694,75 +667,6 @@ class BasePlayer(object):
                         # self.model.a2c_network.actor_mlp[0].weight[:,36:176] = torch.nn.Parameter(torch.zeros([512,140], dtype=torch.float, device="cuda")) # depth sensors
                         # self.model.a2c_network.actor_mlp[0].weight[:,176:] = torch.nn.Parameter(torch.zeros([512,12], dtype=torch.float, device="cuda")) # actions
 
-
-
-
-                        # self.states[0][0,:,:] = 0 # [actor lstm hn (short-term memory)
-                        # self.states[1][0,:,:] = 0 # [actor lstm cn (long-term memory)
-                                            
-                        # self.states[0][0,:,rand_hn_idx] = 0 * torch.ones_like(self.states[0][0,:,rand_hn_idx]) # [actor lstm hn (short-term memory)
-                        # self.states[1][0,:,rand_cn_idx] = 0 * torch.ones_like(self.states[1][0,:,rand_cn_idx]) # [actor lstm cn (short-term memory)
-
-                        # Ablate neurons contributing to A_LSTM_HC_PC_001 when disturbance
-
-                        # pass
-
-                        # # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  < -0.03 --> # -3.5BW: 99%
-                        # indices_hn = [8, 15, 77, 87, 91]
-                        # indices_cn = [9, 46, 58]
-                        # for idx in indices_hn:
-                        #     self.states[0][0,:,idx] = scl_hc.mean_[idx] * torch.ones_like(self.states[0][0,:,idx].cpu())
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[0][0,:,idx].cpu())
-
-
-                        # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  < -0.02 --> # -3.5BW: 97%
-                        # indices_hn = [1, 8, 15, 75, 77, 87, 91, 93, 122]
-                        # indices_cn = [9, 28, 46, 58, 75, 92, 110, 116, 122]
-                        # for idx in indices_hn:
-                        #     self.states[0][0,:,idx] = scl_hc.mean_[idx] * torch.ones_like(self.states[0][0,:,idx].cpu())
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[0][0,:,idx].cpu())
-
-
-                        # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  < -0.01 --> # -3.5BW: 38%
-                        # indices_hn = [1,8,15,21,28,29,32,38,43,44,45,62,65,75,77,78,82,87,90,91,93,94,97,106,107,114,118,119,122]
-                        # indices_cn = [0,4,6,9,22,28,33,39,41,42,44,46,58,63,72,73,75,87,91,92,98,102,104,105,110,112,114,115,116,118,119,120,122,124,126]
-                        # for idx in indices_hn:
-                        #     self.states[0][0,:,idx] = scl_hc.mean_[idx] * torch.ones_like(self.states[0][0,:,idx].cpu())
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-                        # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > 0 --> # -3.5BW: 7%
-                        # indices_hn = [0,2,4,5,6,7,9,11,12,14,16,17,18,22,24,27,30,31,34,35,36,37,40,41,42,47,48,50,52,53,54,56,57,58,59,60,61,63,66,67,68,70,73,79,80,81,83,85,88,92,95,96,98,99,100,101,102,104,109,110,112,113,115,116,117,123,124,125,126,127]
-                        # indices_cn = [1,2,3,7,8,10,13,15,16,17,19,20,21,23,24,26,29,32,34,35,37,40,43,45,47,48,49,50,51,53,55,56,60,61,62,64,65,68,69,74,76,77,78,80,82,86,88,89,90,95,99,100,103,106,108,113,117,121,123,125,127]
-
-                        # for idx in indices_hn:
-                        #     self.states[0][0,:,idx] = scl_hc.mean_[idx] * torch.ones_like(self.states[0][0,:,idx].cpu())
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-                        # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > -0.01 --> # -3.5BW: 9%
-                        # indices_hn = [0,2,3,4,5,6,7,9,10,11,12,13,14,16,17,18,19,20,22,23,24,25,26,27,30,31,33,34,35,36,37,39,40,41,42,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,63,64,66,67,68,69,70,71,72,73,74,76,79,80,81,83,84,85,86,88,89,92,95,96,98,99,100,101,102,103,104,105,108,109,110,111,112,113,115,116,117,120,121,123,124,125,126,127]
-                        # indices_cn = [1,2,3,5,7,8,10,11,12,13,14,15,16,17,18,19,20,21,23,24,25,26,27,29,30,31,32,34,35,36,37,38,40,43,45,47,48,49,50,51,52,53,54,55,56,57,59,60,61,62,64,65,66,67,68,69,70,71,74,76,77,78,79,80,81,82,83,84,85,86,88,89,90,93,94,95,96,97,99,100,101,103,106,107,108,109,111,113,117,121,123,125,127]
-
-                        # for idx in indices_hn:
-                        #     self.states[0][0,:,idx] = scl_hc.mean_[idx] * torch.ones_like(self.states[0][0,:,idx].cpu())
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-                        # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > 0.01 --> # -3.5BW: 100%
-                        # indices_hn = [17,22,36,52,54,59,60,81,104,115,125,126,127]
-                        # indices_cn = [34,60,68,76,82,100,106,121]
-                        
-                        # for idx in indices_hn:
-                        #     self.states[0][0,:,idx] = scl_hc.mean_[idx] * torch.ones_like(self.states[0][0,:,idx].cpu())
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
                         # Gather statistics on random ablations of N neurons
                         if N_hn > 0:
                             for i in range(400):  # Assuming self.states.size(1) is 400
@@ -781,156 +685,10 @@ class BasePlayer(object):
                                     print("cn neurons ablated", static_indices_cn[i])
 
 
-                        # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > 0.01 --> # -3.5BW: 383/400=96%
-                        # indices_cn = [18]
-                        
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-                        # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > 0.01 --> # -3.5BW: 300/400=75%
-                        # indices_cn = [18,73]
-                        
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-                        # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > 0.01 --> # -3.5BW: 393/400=98%
-                        # indices_cn = [73]
-                        
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-                        # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > 0.01 --> # -3.5BW: 231/400=58%
-                        # indices_cn = [18,30,54,73,77]
-                        
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-                        # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > 0.01 --> # -3.5BW: 206/400=52%
-                        # indices_cn = [18,30,54,73,74,77,88,108]
-                        
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-
-                        # # Ablate [del(RHhip)/del(hc) *47, hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > 0.01 --> # -3.5BW: 206/400=52%
-                        # indices_cn = [2,6,30,42,101,108]
-                        
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-
-                        # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  > 0.01 --> # -3.5BW: 150/400=38%
-                        # indices_cn = [6,18,73,94]
-                        
-                        # for idx in indices_cn:
-                        #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
-
-
-                        # Ablate ALL hn
-                        # self.states[0][0,:,:] = torch.from_numpy(scl_hc.mean_[:128]) * torch.ones_like(self.states[0][0,:,:].cpu()) # -3.5BW: 50% 
-
-                        # Ablate ALL cn
-                        # self.states[1][0,:,:] = torch.from_numpy(scl_hc.mean_[128:]) * torch.ones_like(self.states[1][0,:,:].cpu()) # -3.5BW: 0% 
-
-                        # based on a_rnn grad and a_rnn activations (MAYBE THE WRONG PLACE TO BE ABLATING. MAYBE NEED TO DO AFTER RNN UPDATE BEFORE ACTION SELECTION. INSIDE GET_ACTION
-                        # self.states[0][0,:,10] = scl_hc.mean_[10] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,13] = scl_hc.mean_[13] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,48] = scl_hc.mean_[48] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,56] = scl_hc.mean_[56] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,66] = scl_hc.mean_[66] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,98] = scl_hc.mean_[98] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,101] = scl_hc.mean_[101] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,108] = scl_hc.mean_[108] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,114] = scl_hc.mean_[114] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-
-                        # self.states[0][0,:,13] = scl_hc.mean_[13] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # # self.states[0][0,:,47] = scl_hc.mean_[47] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # # self.states[0][0,:,48] = scl_hc.mean_[48] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,56] = scl_hc.mean_[56] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # # self.states[0][0,:,68] = scl_hc.mean_[68] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # # self.states[0][0,:,98] = scl_hc.mean_[98] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,101] = scl_hc.mean_[101] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # # self.states[0][0,:,103] = scl_hc.mean_[103] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # self.states[0][0,:,108] = scl_hc.mean_[108] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-                        # # self.states[0][0,:,114] = scl_hc.mean_[114] * torch.ones_like(self.states[0][0,:,0].cpu()) # -3.5BW: 50% robots recover
-
-
-                    # POS
-                    # self.states[0][0,:,30] = 0 * torch.ones_like(self.states[0][0,:,30]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,47] = 0 * torch.ones_like(self.states[0][0,:,47]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,54] = 0 * torch.ones_like(self.states[0][0,:,54]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,55] = 0 * torch.ones_like(self.states[0][0,:,55]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,56] = 0 * torch.ones_like(self.states[0][0,:,56]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,67] = 0 * torch.ones_like(self.states[0][0,:,67]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,68] = 0 * torch.ones_like(self.states[0][0,:,68]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,84] = 0 * torch.ones_like(self.states[0][0,:,84]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,98] = 0 * torch.ones_like(self.states[0][0,:,98]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,101] = 0 * torch.ones_like(self.states[0][0,:,101]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,107] = 0 * torch.ones_like(self.states[0][0,:,107]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,112] = 0 * torch.ones_like(self.states[0][0,:,112]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,114] = 0 * torch.ones_like(self.states[0][0,:,114]) # [actor lstm hn (short-term memory)
-
-                    # self.states[1][0,:,21] = 0 * torch.ones_like(self.states[1][0,:,21]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,47] = 0 * torch.ones_like(self.states[1][0,:,47]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,67] = 0 * torch.ones_like(self.states[1][0,:,67]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,68] = 0 * torch.ones_like(self.states[1][0,:,68]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,107] = 0 * torch.ones_like(self.states[1][0,:,107]) # [actor lstm cn (short-term memory)
-
-                    # NEG
-                    # self.states[0][0,:,2] = 0 * torch.ones_like(self.states[0][0,:,2]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,9] = 0 * torch.ones_like(self.states[0][0,:,9]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,16] = 0 * torch.ones_like(self.states[0][0,:,16]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,33] = 0 * torch.ones_like(self.states[0][0,:,33]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,42] = 0 * torch.ones_like(self.states[0][0,:,42]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,64] = 0 * torch.ones_like(self.states[0][0,:,64]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,94] = 0 * torch.ones_like(self.states[0][0,:,94]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,109] = 0 * torch.ones_like(self.states[0][0,:,109]) # [actor lstm hn (short-term memory)
-                    # self.states[0][0,:,121] = 0 * torch.ones_like(self.states[0][0,:,121]) # [actor lstm hn (short-term memory)
-
-                    # self.states[1][0,:,2] = 0 * torch.ones_like(self.states[1][0,:,2]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,16] = 0 * torch.ones_like(self.states[1][0,:,16]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,18] = 0 * torch.ones_like(self.states[1][0,:,18]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,33] = 0 * torch.ones_like(self.states[1][0,:,33]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,46] = 0 * torch.ones_like(self.states[1][0,:,46]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,74] = 0 * torch.ones_like(self.states[1][0,:,74]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,81] = 0 * torch.ones_like(self.states[1][0,:,81]) # [actor lstm cn (short-term memory)
-
-                    # self.states[1][0,:,8] = 0 * torch.ones_like(self.states[1][0,:,2]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,46] = 0 * torch.ones_like(self.states[1][0,:,46]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,72] = 0 * torch.ones_like(self.states[1][0,:,74]) # [actor lstm cn (short-term memory)
-                    # self.states[1][0,:,81] = 0 * torch.ones_like(self.states[1][0,:,81]) # [actor lstm cn (short-term memory)
 
                 hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
-                # # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
-                # # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
                 hc_pc = pca_hc.transform(scl_hc.transform(hc.detach().cpu().numpy()))
-
-                # hc = torch.tensor(scl_hc.inverse_transform(pca_hc.inverse_transform(hc_pc)), dtype=torch.float32).unsqueeze(dim=0)
-
-                    # self.states[0][0,ROBOT_ID_START:ROBOT_ID_END,:] = hx[:,ROBOT_ID_START:ROBOT_ID_END,:]
-                    # self.states[1][0,ROBOT_ID_START:ROBOT_ID_END,:] = cx[:,ROBOT_ID_START:ROBOT_ID_END,:]
-                    # self.states[0][0,ROBOT_ID_START:ROBOT_ID_END,:] = hc[:,ROBOT_ID_START:ROBOT_ID_END,:DIM_A_LSTM_HX]
-                    # self.states[1][0,ROBOT_ID_START:ROBOT_ID_END,:] = hc[:,ROBOT_ID_START:ROBOT_ID_END,DIM_A_LSTM_HX:]
-
-                    # perturb_idx += 1
-
-                # hx_pc_last = hx_pc
-                # cx_pc_last = cx_pc
-                
                 hc_pc_last = hc_pc
-
-                # hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
-                # # hx_pc = pca_hx.transform(scl_hx.transform(torch.squeeze(hx).detach().cpu().numpy()))
-                # # cx_pc = pca_cx.transform(scl_cx.transform(torch.squeeze(cx).detach().cpu().numpy()))
-                # hc_pc = pca_hc.transform(scl_hc.transform(hc.detach().cpu().numpy()))
-
-
 
                 if self.export_data:                  
 
@@ -1062,14 +820,14 @@ class BasePlayer(object):
                     
                     # Plot the line of the last agent
                     ax1.plot(
-                        [hc_pc[ROBOT_ID_START, 0], hc_pc_last[ROBOT_ID_START, 0]], 
-                        [hc_pc[ROBOT_ID_START, 1], hc_pc_last[ROBOT_ID_START, 1]],
-                        [hc_pc[ROBOT_ID_START, 2], hc_pc_last[ROBOT_ID_START, 2]],
+                        [hc_pc[ROBOT_ID_PLOT, 0], hc_pc_last[ROBOT_ID_PLOT, 0]], 
+                        [hc_pc[ROBOT_ID_PLOT, 1], hc_pc_last[ROBOT_ID_PLOT, 1]],
+                        [hc_pc[ROBOT_ID_PLOT, 2], hc_pc_last[ROBOT_ID_PLOT, 2]],
                         c='k')
 
                     # Update the marker position
-                    marker.set_data([hc_pc[ROBOT_ID_START, 0]], [hc_pc[ROBOT_ID_START, 1]])
-                    marker.set_3d_properties([hc_pc[ROBOT_ID_START, 2]])
+                    marker.set_data([hc_pc[ROBOT_ID_PLOT, 0]], [hc_pc[ROBOT_ID_PLOT, 1]])
+                    marker.set_3d_properties([hc_pc[ROBOT_ID_PLOT, 2]])
                     
                     # Set the title of the plot
                     ax1.set_title(f'Timestep: {t}')
