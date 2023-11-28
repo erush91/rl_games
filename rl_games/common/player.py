@@ -586,60 +586,52 @@ class BasePlayer(object):
                     # neural_obs_override[ROBOT_ABLATION_IDX, 136:176] = 0 # height  400/400 = 100%
                     
                     ### NEURAL OVERRIDE STATES IN ###
-                    # SAMPLING-BASED METHOD (171, 159, 158 / 400)
+                    ### Four neurons identified through SAMPLING-BASED METHOD, implicated in more than 40% of the failed trials
+
+                    # # (160, 161, 172 / 400 = 41%) # WHEN ABLATED FOR ALL TIME (AGREES WITH FRONTIERS PAPER 37%)
                     # neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
-                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 6] = scl_hc.mean_[128+6] # 0.205488821246418
-                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 18] = scl_hc.mean_[128+18] # 0.22776731317200002
-                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 73] = scl_hc.mean_[128+73] # 0.59731554871306
-                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 94] = scl_hc.mean_[128+94] # -0.199395715246838
+                    # neural_state_in_override[1][:, :, 6] = scl_hc.mean_[128+6] # -0.286083278496328
+                    # neural_state_in_override[1][:, :, 18] = scl_hc.mean_[128+18] # 4.6484050438199995
+                    # neural_state_in_override[1][:, :, 73] = scl_hc.mean_[128+73] # -0.17231659909890198
+                    # neural_state_in_override[1][:, :, 94] = scl_hc.mean_[128+94] # 0.420681332036574
 
+                    # # (171, 159, 158, 155, 143 / 400 = 39%) WHEN ABLATED DURING AND AFTER PERTURBATION (NEW, SAME RESULTS AS FRONTIERS PAPER)
+                    # neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 6] = scl_hc.mean_[128+6] # -0.286083278496328
+                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 18] = scl_hc.mean_[128+18] # 4.6484050438199995
+                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 73] = scl_hc.mean_[128+73] # -0.17231659909890198
+                    # neural_state_in_override[1][:, ROBOT_ABLATION_IDX, 94] = scl_hc.mean_[128+94] # 0.420681332036574
 
-                    # #  150/400=38%
+                    ## (150 / 400 = 38%)
                     # indices_cn = [6,18,73,94]
                     
                     # for idx in indices_cn:
                     #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
 
-                    # Ablate ALL hn
+                    # # Ablate ALL hn
                     # self.states[0][0,:,:] = torch.from_numpy(scl_hc.mean_[:128]) * torch.ones_like(self.states[0][0,:,:].cpu()) # -3.5BW: 50%
 
-                    # Ablate ALL cn
+                    # # Ablate ALL cn
                     # self.states[1][0,:,:] = torch.from_numpy(scl_hc.mean_[128:]) * torch.ones_like(self.states[1][0,:,:].cpu()) # -3.5BW: 0%
                     
-                    
-
 
                     ### NEURAL OVERRIDE STATES OUT ###
-                    # Four neurons most implicated in RH hip extension 50/400 = 12.5% (used to be 180/400 = 45% when ablate these neurons for entire trial)
+                    ### Four neurons identified through GRADIENT-BASED METHOD [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  < -0.08
 
-                    # # SAMPLING-BASED METHOD (23, 24, 22 / 400) BUT THIS IS OVERRIDING ALL VALUES!!
-                    # neural_state_out_override = self.states # [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan)]
-                    # neural_state_out_override[1][:, self.env.perturb_started, 6] = scl_hc.mean_[128+6] # 0.205488821246418
-                    # neural_state_out_override[1][:, self.env.perturb_started, 18] = scl_hc.mean_[128+18] # 0.22776731317200002
-                    # neural_state_out_override[1][:, self.env.perturb_started, 73] = scl_hc.mean_[128+73] # 0.59731554871306
-                    # neural_state_out_override[1][:, self.env.perturb_started, 94] = scl_hc.mean_[128+94] # -0.199395715246838
+                    # # (172, 166, 145, 145, 172, 178, 164, 138, 135 / 400 = 39%) WHEN ABLATED FOR ALL TIME (AGREES WITH FRONTIERS PAPER 42%)
+                    # neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    # neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    # neural_state_in_override_indices = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
+                    # neural_state_out_override_indices = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
+                    # neural_state_in_override[0][:, :, neural_state_in_override_indices] = torch.tensor(scl_hc.mean_[neural_state_in_override_indices], dtype=torch.float, device='cuda')
+                    # neural_state_out_override[0][:, :, neural_state_out_override_indices] = torch.tensor(scl_hc.mean_[neural_state_out_override_indices], dtype=torch.float, device='cuda')
 
-
-                    # # SAMPLING-BASED METHOD ( / 400) FIXED SO ONLY OVERRIDING SPECIFIC VALUES
-                    neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    # # (381, 386, 391, 391, 389 / 400 = 97%) # WHEN ABLATED DURING AND AFTER PERTURBATION (NEW, DISAGREES WITH FRONTIERS PAPER) 
+                    # # NOT SURE WHY PERFORMANCE IS NOT DEGRADED??? LOOK AT HOLISTIC NEURAL STATE???
                     neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
-                    # neural_state_out_override[1][:, self.env.perturb_started, 6] = scl_hc.mean_[128+6] # 0.205488821246418
-                    # neural_state_out_override[1][:, self.env.perturb_started, 18] = scl_hc.mean_[128+18] # 0.22776731317200002
-                    # neural_state_out_override[1][:, self.env.perturb_started, 73] = scl_hc.mean_[128+73] # 0.59731554871306
-                    # neural_state_out_override[1][:, self.env.perturb_started, 94] = scl_hc.mean_[128+94] # -0.199395715246838
-
-                    # # (172, 166 / 400) # WHEN ABLATED FOR ALL TIME (AGREES WITH FRONTIERS PAPER)
-                    # # (381 / 400) # WHEN ABLATED DURING AND AFTER PERTURBATION
-                    # # # Ablate [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  < -0.08
-                    neural_state_out_override[0][:, ROBOT_ABLATION_IDX, 13] = scl_hc.mean_[13] # 0.205488821246418
-                    neural_state_out_override[0][:, ROBOT_ABLATION_IDX, 56] = scl_hc.mean_[56] # 0.22776731317200002
-                    neural_state_out_override[0][:, ROBOT_ABLATION_IDX, 101] = scl_hc.mean_[101] # 0.59731554871306
-                    neural_state_out_override[0][:, ROBOT_ABLATION_IDX, 108] = scl_hc.mean_[108] # -0.199395715246838
-
-                    neural_state_in_override[0][:, ROBOT_ABLATION_IDX, 13] = scl_hc.mean_[13] # 0.205488821246418
-                    neural_state_in_override[0][:, ROBOT_ABLATION_IDX, 56] = scl_hc.mean_[56] # 0.22776731317200002
-                    neural_state_in_override[0][:, ROBOT_ABLATION_IDX, 101] = scl_hc.mean_[101] # 0.59731554871306
-                    neural_state_in_override[0][:, ROBOT_ABLATION_IDX, 108] = scl_hc.mean_[108] # -0.199395715246838
+                    neural_state_out_override_indices = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
+                    for idx in neural_state_out_override_indices:
+                        neural_state_out_override[0][:, ROBOT_ABLATION_IDX, idx] = scl_hc.mean_[idx]
 
 
                     action = self.get_action(obses, is_deterministic, neural_obs_override, neural_state_in_override, neural_state_out_override) # neural_obs_override,neural_state_override
