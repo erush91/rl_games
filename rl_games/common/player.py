@@ -495,47 +495,32 @@ class BasePlayer(object):
             # Initialize the marker outside the loop
             marker, = ax1.plot([0], [0], [0], 'ro')  # Use 'ro' for red circles
 
-            perturb_idx = 0
-
-            import random
-            rand_hn_idx = random.sample(range(0, 127), 12)
-            rand_cn_idx = random.sample(range(0, 127), 5)
-
-            print('rand_hn_idx:', rand_hn_idx)
-            print('rand_cn_idx:', rand_cn_idx)
-
             ROBOT_ID_PLOT = 0            
 
             N_ROBOTS = 400
 
             # Sample settings
-            N_hn = 26 # Number of random numbers for hn
-            N_cn = 0  # Number of random numbers for cn
+            N_hn = 128 #26 # Number of random numbers for hn
+            N_cn = 128  # Number of random numbers for cn
 
             # Pre-generating indices
             # Initialize the tensor with all Falses
-            static_indices_hn = torch.zeros(400, DIM_A_LSTM_HX, dtype=torch.bool, device='cuda')
 
-            # Iterate over each row and set 26 random indices to True
-            for row_idx in range(DIM_A_LSTM_HX):
-                indices_to_set_true = random.sample(range(DIM_A_LSTM_HX), N_hn)
-                static_indices_hn[row_idx, indices_to_set_true] = True
-                
+            # Generate random row indices for each row
+            row_indices = np.tile(np.arange(DIM_A_LSTM_HX), (N_ROBOTS, 1))
 
-            static_indices_cn = torch.zeros(400, DIM_A_LSTM_CX, dtype=torch.bool, device='cuda')
+            # Shuffle row_indices randomly for each row
+            np.apply_along_axis(np.random.shuffle, 1, row_indices)
 
-            # Iterate over each row and set 26 random indices to True
-            for row_idx in range(DIM_A_LSTM_CX):
-                indices_to_set_true = random.sample(range(DIM_A_LSTM_CX), N_cn)
-                static_indices_cn[row_idx, indices_to_set_true] = True
-                
-            # static_indices_hn = [random.sample(range(0, 128), N_hn) for _ in range(400)]
-            static_indices_cn = [random.sample(range(0, 128), N_cn) for _ in range(400)]
+            # Initialize ablate_hn with random True values
+            ablate_hn_np = np.tile(scl_hc.mean_[:128], (N_ROBOTS,1))
+            ablate_hn_np[np.arange(N_ROBOTS).reshape(-1, 1), row_indices[:, :DIM_A_LSTM_HX-N_hn]] = torch.nan
+            ablate_hn = torch.tensor(ablate_hn_np, dtype=torch.float, device='cuda').unsqueeze(0)
 
-            # PRECOMPUTE MEAN NEURAL VALUES FROM SCL
-
-            mean_values = torch.tensor(scl_hc.mean_[:DIM_A_LSTM_HX], dtype=torch.float32, device='cuda')
-            mean_values_expanded = mean_values.unsqueeze(0).expand(1, N_ROBOTS, DIM_A_LSTM_HX).to('cuda')
+            # Initialize ablate_hn with random True values
+            ablate_cn_np = np.tile(scl_hc.mean_[128:], (N_ROBOTS,1))
+            ablate_cn_np[np.arange(N_ROBOTS).reshape(-1, 1), row_indices[:, :DIM_A_LSTM_CX-N_cn]] = torch.nan
+            ablate_cn = torch.tensor(ablate_cn_np, dtype=torch.float, device='cuda').unsqueeze(0)
 
             for t in range(self.max_steps - 1):
                 print("t:", t)
@@ -552,25 +537,134 @@ class BasePlayer(object):
                         c_h_last = self.states[2][0,:,:] # self.layers_out['c_rnn'][1][0][0,0,:]
                         c_c_last = self.states[3][0,:,:] # self.layers_out['c_rnn'][1][1][0,0,:]
                     
-
                     ROBOT_PERTURB_IDX = None
                     ABLATE_FOR_ENTIRE_TRIAL = False
                     ABLATE_DURING_AND_AFTER_PERTURB = True
 
                     # ABLATION NEURONS FOR ENTIRITY OF TRIAL: BEFORE, DURING, AND AFTER PERTURBATION)
                     if ABLATE_FOR_ENTIRE_TRIAL:
-                        ROBOT_ABLATION_IDX = slice(None)
+                        ROBOT_ABLATION_IDX_FOR_MASK = torch.ones((1,400,128), dtype=torch.bool)
 
                     # ABLATION NEURONS FOR END OF TRIAL (DURING, AND AFTER PERTURBATION)
                     elif ABLATE_DURING_AND_AFTER_PERTURB:
-                        ROBOT_ABLATION_IDX = self.env.perturb_started
-                        ROBOT_ABLATION_IDX_FOR_MASK = (self.env.perturb_started).unsqueeze(1).expand(-1, 128).contiguous().view(-1, 128)
+                        ROBOT_ABLATION_IDX_FOR_MASK = self.env.perturb_started.unsqueeze(-1).repeat(1, 128).unsqueeze(0)
                     
-                    mask = ~(ROBOT_ABLATION_IDX_FOR_MASK * static_indices_hn).unsqueeze(0)
+                    ablate_hn_trial = ablate_hn.detach().clone()
+                    ablate_hn_trial[~ROBOT_ABLATION_IDX_FOR_MASK] = torch.nan
+
+                    ablate_cn_trial = ablate_cn.detach().clone()
+                    ablate_cn_trial[~ROBOT_ABLATION_IDX_FOR_MASK] = torch.nan
 
                     neural_obs_override = None
                     neural_state_in_override = None
                     neural_state_out_override = None
+
+                    ### NEW NEW NEW ###
+
+                    # neural_obs_override = torch.full((N_ROBOTS, DIM_OBS + DIM_ACT), torch.nan, device='cuda')
+                    neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    
+                    # Now, B will contain updated values from A based on the conditions in C and D
+
+                    # OBS ABLATION
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 0] = 0 # u  317/400 = % (because timing does make a difference!)
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 1] = 0 # v  0/400 = 0%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 2] = 0 # w  292/400 = %
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 3] = 0 # p  37/400 = 9.25%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 4] = 0 # q  397/400 = 99.25%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 5] = 0 # r  396/400  = 99%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 6] = 0 # cos(pitch)  387/400 = 96.75%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 7] = 0 # cos(roll)  237 = 59.25%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 8] = 0 # cos(yaw)  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 9] = 0 # u*  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 10] = 0 # v*  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 11] = 0 # r*  400/400 = 100%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 12:24] = 0 # joint pos  0/400 = 0%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 24:36] = 0 # joint vel  315/400 = 78.75%
+                    # neural_obs_override[ROBOT_ABLATION_IDX, 136:176] = 0 #
+
+                    ### CN ABLATION ###
+                    
+                    # CN ABLATE ALL
+                    # neural_state_in_override[1][:, :, :] = torch.tensor(scl_hc.mean_[128:], dtype=torch.float, device='cuda')
+
+                    # CN ABLATE RANDOM
+                    neural_state_in_override[1][:, :, :] = ablate_cn_trial
+
+                    ### HN ABLATION ###
+                    
+                    # HN ABLATE ALL
+                    # neural_state_out_override[0][:, :, :] = torch.tensor(scl_hc.mean_[:128], dtype=torch.float, device='cuda')
+                    # neural_state_in_override[0][:, :, :] = torch.tensor(scl_hc.mean_[:128], dtype=torch.float, device='cuda')
+
+                    # HN ABLATE RANDOM
+                    neural_state_in_override[0][:, :, :] = ablate_hn_trial
+                    neural_state_out_override[0][:, :, :] = ablate_hn_trial
+
+                    # [236,134,229,130,158,175,141,170,217,27,218,246,126,226,213,121,12,252,11,227,110,196,160,35,152,70,54,0,138,13,200,31,56,114,131,34] # hc
+                    # [108,6,101,2,30,47,13,42,89,90,118,98,85,124,99,68,32,24,10,72,3,61,19,109,21,31,22,103,56,69,114,78,46,81,35,97,84] #cn
+
+                    # HN ABLATE TARGETED
+                    # neuron_idx_by_ascending_gradient = [101, 56, 13, 108, 68, 48, 98, 103, 114, 47, 83, 84, 90]
+
+                    ### REMOVE GROUPS OF NEURONS: TOP 1, 2, ... 13 NEURONS
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:1] # 397 400 398 392 398
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:2] # 393 387 390 393 392
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:3] # 285 251 275 274 280
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:4] # 196 187 194 195 214
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:5] # 267 262 287 280 258
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:6] # 239 238 256 230 235
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:7] # 160 164 162 156 167 155 155
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:8] # 194 197 164 199 199
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:9] # 120 80 111 106 100
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:10] # 34 28 32 29 26
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:11] # 50 36 47 46 48
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:12] # 6 3 0 2 1
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:13] # 0 0 0 0 1
+
+                    # targeted_hn = [101, 56, 13, 108] # 196 194
+                    # targeted_hn = [13, 56, 101, 108, 68] # 282 281 282 --> 68 is bad!!!
+                    # targeted_hn = [13, 56, 101, 108, 48] # 177 160 161
+                    # targeted_hn = [13, 56, 101, 108, 98] # 179 170 195
+                    # targeted_hn = [13, 56, 101, 108, 68, 48] # 165
+                    # targeted_hn = [13, 56, 101, 108, 68, 48, 98] # 171
+
+                    ### REMOVE NEURON 68
+                    # targeted_hn = [101, 56, 13, 108, 48] # 186 158 174 150 151
+                    # targeted_hn = [101, 56, 13, 108, 48, 98] # 147 138 115 145 163
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103] # 132 111 101 103 120
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103, 114] # 102 98 103 97 82
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103, 114, 47] # 27 25 21 33 34
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103, 114, 47, 84] # 0 8 0 0 4
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103, 114, 47, 84, 90] # 63 55 63 56 50 --> thought this would be zero. Some interactivity here, because ablating all [:13] yields 0/400 recovery.
+
+                    ### REMOVE NEURON 103
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 114] # 76 77 97 85 100
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 114, 47] # 15 19 20 12 22
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 114, 47, 84] # 3 7 5 4 7
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 114, 47, 84, 90] # 84 78 64 78 97
+
+                    # neural_state_out_override[0][:, :, targeted_hn] = torch.tensor(scl_hc.mean_[targeted_hn], dtype=torch.float, device='cuda')
+                    # neural_state_in_override[0][:, :, targeted_hn] = torch.tensor(scl_hc.mean_[targeted_hn], dtype=torch.float, device='cuda')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
                     ### NEURAL OVERRIDE OBSERVATIONS ### (OLD)
                     # neural_obs_override = obses
@@ -632,12 +726,17 @@ class BasePlayer(object):
                     # for idx in indices_cn:
                     #     self.states[1][0,:,idx] = scl_hc.mean_[128+idx] * torch.ones_like(self.states[1][0,:,idx].cpu())
 
-                    # # Ablate ALL hn
+                    # # Ablate ALL hn (329/400)
                     # self.states[0][0,:,:] = torch.from_numpy(scl_hc.mean_[:128]) * torch.ones_like(self.states[0][0,:,:].cpu()) # -3.5BW: 50%
 
-                    # # Ablate ALL cn
+                    # # Ablate ALL cn (3/400)
                     # self.states[1][0,:,:] = torch.from_numpy(scl_hc.mean_[128:]) * torch.ones_like(self.states[1][0,:,:].cpu()) # -3.5BW: 0%
                     
+                    ### ABLATE ALL hn (317/400)
+                    # neural_state_in_override[0][:, :, :] = torch.tensor(scl_hc.mean_[:128], dtype=torch.float, device='cuda')
+
+                    ### ABLATE ALL cn (2/400)
+                    # neural_state_in_override[1][:, :, :] = torch.tensor(scl_hc.mean_[128:], dtype=torch.float, device='cuda')
 
                     ### NEURAL OVERRIDE STATES OUT (SPECIFICALLY TARGETED) ###
                     ### Four neurons identified through GRADIENT-BASED METHOD [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  < -0.08
@@ -647,77 +746,79 @@ class BasePlayer(object):
                     # neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
                     # neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
                     # neural_state_in_override_indices = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
-                    # neural_state_out_override_indices = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
+                    # targeted_hn = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
                     # neural_state_in_override[0][:, :, neural_state_in_override_indices] = torch.tensor(scl_hc.mean_[neural_state_in_override_indices], dtype=torch.float, device='cuda')
-                    # neural_state_out_override[0][:, :, neural_state_out_override_indices] = torch.tensor(scl_hc.mean_[neural_state_out_override_indices], dtype=torch.float, device='cuda')
-
+                    # neural_state_out_override[0][:, :, targeted_hn] = torch.tensor(scl_hc.mean_[targeted_hn], dtype=torch.float, device='cuda')
 
                     # # WHEN ABLATED FOR ALL TIME (AGREES WITH FRONTIERS PAPER 42%)
                     # # (172, 166, 145, 145, 172, 178, 164, 138, 135 / 400 = 39%)
-                    neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
-                    neuron_idx_by_ascending_gradient = [101, 56, 13, 108, 68, 48, 98, 103, 114, 47, 83, 84, 90]
+                    # neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    # neuron_idx_by_ascending_gradient = [101, 56, 13, 108, 68, 48, 98, 103, 114, 47, 83, 84, 90]
                     
                     ### REMOVE INDIVIDUAL NEURONS: TOP 1st, 2nd, ... 13th NEURONS
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[0] # 399 
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[1] # 397
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[2] # 389
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[3] # 400
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[4] # 397
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[5] # 400
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[6] # 399
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[7] # 400
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[8] # 400 
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[9] # 397 399 397 398 397
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[10] # 399
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[11] # 398 399
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[12] # 400
+                    # targeted_hn = neuron_idx_by_ascending_gradient[0] # 399
+                    # targeted_hn = neuron_idx_by_ascending_gradient[1] # 397
+                    # targeted_hn = neuron_idx_by_ascending_gradient[2] # 389
+                    # targeted_hn = neuron_idx_by_ascending_gradient[3] # 400
+                    # targeted_hn = neuron_idx_by_ascending_gradient[4] # 397
+                    # targeted_hn = neuron_idx_by_ascending_gradient[5] # 400
+                    # targeted_hn = neuron_idx_by_ascending_gradient[6] # 399
+                    # targeted_hn = neuron_idx_by_ascending_gradient[7] # 400
+                    # targeted_hn = neuron_idx_by_ascending_gradient[8] # 400 
+                    # targeted_hn = neuron_idx_by_ascending_gradient[9] # 397 399 397 398 397
+                    # targeted_hn = neuron_idx_by_ascending_gradient[10] # 399
+                    # targeted_hn = neuron_idx_by_ascending_gradient[11] # 398 399
+                    # targeted_hn = neuron_idx_by_ascending_gradient[12] # 400
 
                     ### REMOVE GROUPS OF NEURONS: TOP 1, 2, ... 13 NEURONS
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:1] # 397 400 398 392 398
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:2] # 393 387 390 393 392
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:3] # 285 251 275 274 280
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:4] # 196 187 194 195 214
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:5] # 267 262 287 280 258
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:6] # 239 238 256 230 235
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:7] # 160 164 162 156 167 155 155
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:8] # 194 197 164 199 199
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:9] # 120 80 111 106 100
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:10] # 34 28 32 29 26
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:11] # 50 36 47 46 48
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:12] # 6 3 0 2 1
-                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:13] # 0 0 0 0 1
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:1] # 397 400 398 392 398
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:2] # 393 387 390 393 392
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:3] # 285 251 275 274 280
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:4] # 196 187 194 195 214
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:5] # 267 262 287 280 258
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:6] # 239 238 256 230 235
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:7] # 160 164 162 156 167 155 155
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:8] # 194 197 164 199 199
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:9] # 120 80 111 106 100
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:10] # 34 28 32 29 26
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:11] # 50 36 47 46 48
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:12] # 6 3 0 2 1
+                    # targeted_hn = neuron_idx_by_ascending_gradient[:13] # 0 0 0 0 1
 
-                    # neural_state_out_override_indices = [101, 56, 13, 108] # 196 194
-                    # neural_state_out_override_indices = [13, 56, 101, 108, 68] # 282 281 282 --> 68 is bad!!!
-                    # neural_state_out_override_indices = [13, 56, 101, 108, 48] # 177 160 161
-                    # neural_state_out_override_indices = [13, 56, 101, 108, 98] # 179 170 195
-                    # neural_state_out_override_indices = [13, 56, 101, 108, 68, 48] # 165
-                    # neural_state_out_override_indices = [13, 56, 101, 108, 68, 48, 98] # 171
+                    # targeted_hn = [101, 56, 13, 108] # 196 194
+                    # targeted_hn = [13, 56, 101, 108, 68] # 282 281 282 --> 68 is bad!!!
+                    # targeted_hn = [13, 56, 101, 108, 48] # 177 160 161
+                    # targeted_hn = [13, 56, 101, 108, 98] # 179 170 195
+                    # targeted_hn = [13, 56, 101, 108, 68, 48] # 165
+                    # targeted_hn = [13, 56, 101, 108, 68, 48, 98] # 171
 
                     ### REMOVE NEURON 68
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48] # 186 158 174 150 151
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98] # 147 138 115 145 163
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103] # 132 111 101 103 120
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103, 114] # 102 98 103 97 82
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103, 114, 47] # 27 25 21 33 34
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103, 114, 47, 84] # 0 8 0 0 4
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103, 114, 47, 84, 90] # 63 55 63 56 50 --> thought this would be zero. Some interactivity here, because ablating all [:13] yields 0/400 recovery.
+                    # targeted_hn = [101, 56, 13, 108, 48] # 186 158 174 150 151
+                    # targeted_hn = [101, 56, 13, 108, 48, 98] # 147 138 115 145 163
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103] # 132 111 101 103 120
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103, 114] # 102 98 103 97 82
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103, 114, 47] # 27 25 21 33 34
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103, 114, 47, 84] # 0 8 0 0 4
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 103, 114, 47, 84, 90] # 63 55 63 56 50 --> thought this would be zero. Some interactivity here, because ablating all [:13] yields 0/400 recovery.
 
                     ### REMOVE NEURON 103
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 114] # 76 77 97 85 100
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 114, 47] # 15 19 20 12 22
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 114, 47, 84] # 3 7 5 4 7
-                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 114, 47, 84, 90] # 84 78 64 78 97
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 114] # 76 77 97 85 100
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 114, 47] # 15 19 20 12 22
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 114, 47, 84] # 3 7 5 4 7
+                    # targeted_hn = [101, 56, 13, 108, 48, 98, 114, 47, 84, 90] # 84 78 64 78 97
 
-                    neural_state_out_override[0][:, :, neural_state_out_override_indices] = torch.tensor(scl_hc.mean_[neural_state_out_override_indices], dtype=torch.float, device='cuda')
+                    # neural_state_out_override[0][:, :, :] = torch.tensor(scl_hc.mean_[:128], dtype=torch.float, device='cuda')
+                    # neural_state_in_override[0][:, :, :] = torch.tensor(scl_hc.mean_[:128], dtype=torch.float, device='cuda')
 
+                    ### ABLATE ALL
+                    # neural_state_out_override[0][:, :, :] = torch.tensor(scl_hc.mean_[128:], dtype=torch.float, device='cuda')
 
                     # # WHEN ABLATED DURING AND AFTER PERTURBATION (NEW, DISAGREES WITH FRONTIERS PAPER) 
                     # # (381, 386, 391, 391, 389 / 400 = 97%)
                     # # NOT SURE WHY PERFORMANCE IS NOT DEGRADED??? GENE TO DO: LOOK AT HOLISTIC NEURAL STATE???
                     # neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
-                    # neural_state_out_override_indices = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
-                    # for idx in neural_state_out_override_indices:
+                    # targeted_hn = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
+                    # for idx in targeted_hn:
                     #     neural_state_out_override[0][:, ROBOT_ABLATION_IDX, idx] = scl_hc.mean_[idx]
 
 
@@ -820,11 +921,11 @@ class BasePlayer(object):
                         # Gather statistics on random ablations of N neurons
                         # if N_hn > 0:
                         #     for i in range(400):  # Assuming self.states.size(1) is 400
-                        #         mean_tensor_hn = torch.tensor(scl_hc.mean_[      np.array(static_indices_hn[i])], dtype=self.states[0].dtype).to(self.device)
-                        #         self.states[0][0, i, static_indices_hn[i]] = mean_tensor_hn * torch.ones_like(self.states[0][0, i, static_indices_hn[i]])
+                        #         mean_tensor_hn = torch.tensor(scl_hc.mean_[      np.array(ablate_hn[i])], dtype=self.states[0].dtype).to(self.device)
+                        #         self.states[0][0, i, ablate_hn[i]] = mean_tensor_hn * torch.ones_like(self.states[0][0, i, ablate_hn[i]])
 
                         #         if done[i]:
-                        #             print("hn neurons ablated", static_indices_hn[i])
+                        #             print("hn neurons ablated", ablate_hn[i])
 
                         # if N_cn > 0:
                         #     for i in range(400):  # Assuming self.states.size(1) is 400
