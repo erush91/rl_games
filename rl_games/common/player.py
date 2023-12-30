@@ -509,12 +509,33 @@ class BasePlayer(object):
             N_ROBOTS = 400
 
             # Sample settings
-            N_hn = 0 # Number of random numbers for hn
+            N_hn = 26 # Number of random numbers for hn
             N_cn = 0  # Number of random numbers for cn
 
             # Pre-generating indices
-            static_indices_hn = [random.sample(range(0, 128), N_hn) for _ in range(400)]
+            # Initialize the tensor with all Falses
+            static_indices_hn = torch.zeros(400, DIM_A_LSTM_HX, dtype=torch.bool, device='cuda')
+
+            # Iterate over each row and set 26 random indices to True
+            for row_idx in range(DIM_A_LSTM_HX):
+                indices_to_set_true = random.sample(range(DIM_A_LSTM_HX), N_hn)
+                static_indices_hn[row_idx, indices_to_set_true] = True
+                
+
+            static_indices_cn = torch.zeros(400, DIM_A_LSTM_CX, dtype=torch.bool, device='cuda')
+
+            # Iterate over each row and set 26 random indices to True
+            for row_idx in range(DIM_A_LSTM_CX):
+                indices_to_set_true = random.sample(range(DIM_A_LSTM_CX), N_cn)
+                static_indices_cn[row_idx, indices_to_set_true] = True
+                
+            # static_indices_hn = [random.sample(range(0, 128), N_hn) for _ in range(400)]
             static_indices_cn = [random.sample(range(0, 128), N_cn) for _ in range(400)]
+
+            # PRECOMPUTE MEAN NEURAL VALUES FROM SCL
+
+            mean_values = torch.tensor(scl_hc.mean_[:DIM_A_LSTM_HX], dtype=torch.float32, device='cuda')
+            mean_values_expanded = mean_values.unsqueeze(0).expand(1, N_ROBOTS, DIM_A_LSTM_HX).to('cuda')
 
             for t in range(self.max_steps - 1):
                 print("t:", t)
@@ -543,6 +564,9 @@ class BasePlayer(object):
                     # ABLATION NEURONS FOR END OF TRIAL (DURING, AND AFTER PERTURBATION)
                     elif ABLATE_DURING_AND_AFTER_PERTURB:
                         ROBOT_ABLATION_IDX = self.env.perturb_started
+                        ROBOT_ABLATION_IDX_FOR_MASK = (self.env.perturb_started).unsqueeze(1).expand(-1, 128).contiguous().view(-1, 128)
+                    
+                    mask = ~(ROBOT_ABLATION_IDX_FOR_MASK * static_indices_hn).unsqueeze(0)
 
                     neural_obs_override = None
                     neural_state_in_override = None
@@ -615,10 +639,11 @@ class BasePlayer(object):
                     # self.states[1][0,:,:] = torch.from_numpy(scl_hc.mean_[128:]) * torch.ones_like(self.states[1][0,:,:].cpu()) # -3.5BW: 0%
                     
 
-                    ### NEURAL OVERRIDE STATES OUT ###
+                    ### NEURAL OVERRIDE STATES OUT (SPECIFICALLY TARGETED) ###
                     ### Four neurons identified through GRADIENT-BASED METHOD [del(RHhip)/del(hc) * hc]_perturb - [del(RHhip)/del(hc) * hc)]_nom  < -0.08
 
-                    # # (172, 166, 145, 145, 172, 178, 164, 138, 135 / 400 = 39%) WHEN ABLATED FOR ALL TIME (AGREES WITH FRONTIERS PAPER 42%)
+                    # # WHEN ABLATED FOR ALL TIME (AGREES WITH FRONTIERS PAPER 42%)
+                    # # (172, 166, 145, 145, 172, 178, 164, 138, 135 / 400 = 39%)
                     # neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
                     # neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
                     # neural_state_in_override_indices = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
@@ -626,12 +651,103 @@ class BasePlayer(object):
                     # neural_state_in_override[0][:, :, neural_state_in_override_indices] = torch.tensor(scl_hc.mean_[neural_state_in_override_indices], dtype=torch.float, device='cuda')
                     # neural_state_out_override[0][:, :, neural_state_out_override_indices] = torch.tensor(scl_hc.mean_[neural_state_out_override_indices], dtype=torch.float, device='cuda')
 
-                    # # (381, 386, 391, 391, 389 / 400 = 97%) # WHEN ABLATED DURING AND AFTER PERTURBATION (NEW, DISAGREES WITH FRONTIERS PAPER) 
-                    # # NOT SURE WHY PERFORMANCE IS NOT DEGRADED??? LOOK AT HOLISTIC NEURAL STATE???
+
+                    # # WHEN ABLATED FOR ALL TIME (AGREES WITH FRONTIERS PAPER 42%)
+                    # # (172, 166, 145, 145, 172, 178, 164, 138, 135 / 400 = 39%)
                     neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
-                    neural_state_out_override_indices = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
-                    for idx in neural_state_out_override_indices:
-                        neural_state_out_override[0][:, ROBOT_ABLATION_IDX, idx] = scl_hc.mean_[idx]
+                    neuron_idx_by_ascending_gradient = [101, 56, 13, 108, 68, 48, 98, 103, 114, 47, 83, 84, 90]
+                    
+                    ### REMOVE INDIVIDUAL NEURONS: TOP 1st, 2nd, ... 13th NEURONS
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[0] # 399 
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[1] # 397
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[2] # 389
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[3] # 400
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[4] # 397
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[5] # 400
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[6] # 399
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[7] # 400
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[8] # 400 
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[9] # 397 399 397 398 397
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[10] # 399
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[11] # 398 399
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[12] # 400
+
+                    ### REMOVE GROUPS OF NEURONS: TOP 1, 2, ... 13 NEURONS
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:1] # 397 400 398 392 398
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:2] # 393 387 390 393 392
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:3] # 285 251 275 274 280
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:4] # 196 187 194 195 214
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:5] # 267 262 287 280 258
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:6] # 239 238 256 230 235
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:7] # 160 164 162 156 167 155 155
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:8] # 194 197 164 199 199
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:9] # 120 80 111 106 100
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:10] # 34 28 32 29 26
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:11] # 50 36 47 46 48
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:12] # 6 3 0 2 1
+                    # neural_state_out_override_indices = neuron_idx_by_ascending_gradient[:13] # 0 0 0 0 1
+
+                    # neural_state_out_override_indices = [101, 56, 13, 108] # 196 194
+                    # neural_state_out_override_indices = [13, 56, 101, 108, 68] # 282 281 282 --> 68 is bad!!!
+                    # neural_state_out_override_indices = [13, 56, 101, 108, 48] # 177 160 161
+                    # neural_state_out_override_indices = [13, 56, 101, 108, 98] # 179 170 195
+                    # neural_state_out_override_indices = [13, 56, 101, 108, 68, 48] # 165
+                    # neural_state_out_override_indices = [13, 56, 101, 108, 68, 48, 98] # 171
+
+                    ### REMOVE NEURON 68
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48] # 186 158 174 150 151
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98] # 147 138 115 145 163
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103] # 132 111 101 103 120
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103, 114] # 102 98 103 97 82
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103, 114, 47] # 27 25 21 33 34
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103, 114, 47, 84] # 0 8 0 0 4
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 103, 114, 47, 84, 90] # 63 55 63 56 50 --> thought this would be zero. Some interactivity here, because ablating all [:13] yields 0/400 recovery.
+
+                    ### REMOVE NEURON 103
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 114] # 76 77 97 85 100
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 114, 47] # 15 19 20 12 22
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 114, 47, 84] # 3 7 5 4 7
+                    # neural_state_out_override_indices = [101, 56, 13, 108, 48, 98, 114, 47, 84, 90] # 84 78 64 78 97
+
+                    neural_state_out_override[0][:, :, neural_state_out_override_indices] = torch.tensor(scl_hc.mean_[neural_state_out_override_indices], dtype=torch.float, device='cuda')
+
+
+                    # # WHEN ABLATED DURING AND AFTER PERTURBATION (NEW, DISAGREES WITH FRONTIERS PAPER) 
+                    # # (381, 386, 391, 391, 389 / 400 = 97%)
+                    # # NOT SURE WHY PERFORMANCE IS NOT DEGRADED??? GENE TO DO: LOOK AT HOLISTIC NEURAL STATE???
+                    # neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    # neural_state_out_override_indices = [13, 56, 101, 108] # [0.205488821246418, 0.22776731317200002, 0.59731554871306, -0.199395715246838]
+                    # for idx in neural_state_out_override_indices:
+                    #     neural_state_out_override[0][:, ROBOT_ABLATION_IDX, idx] = scl_hc.mean_[idx]
+
+
+
+
+                    ### NEURAL OVERRIDE STATES OUT (RANDOMLY TARGETED) ###
+                    # # (303, 306,  / 400 = 75%) (FRONTIERS PAPER 85%)
+                    # NOTE: SLOWS DOWN CODE A LOT BECAUSE TORCH.WHERE (CAN WE SPEED UP?)
+                    # NOTE: INCLUDE +128 FOR CX
+                    # NOTE: REVIEW CODE FOR BUGS
+                    # neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), float('nan'), device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), float('nan'), device='cuda')]
+                    # neural_state_out_override[0] = torch.where(mask, neural_state_out_override[0], mean_values_expanded)
+
+                    # nantensor = torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), float('nan'), device='cuda')
+                    # mask = torch.randint(0, 2, (1, N_ROBOTS, DIM_A_LSTM_HX), dtype=torch.bool, device='cuda')
+                    # meanval = torch.tensor(scl_hc.mean_[:128], device='cuda', dtype=torch.float32)
+                    # mean_values = meanval.unsqueeze(0).expand_as(mask)
+
+                    # nantensor = torch.where(mask, nantensor, mean_values)
+
+
+
+                    # neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                    # for idx in range(N_hn):
+                    #     neural_state_out_override[0][:, ROBOT_ABLATION_IDX, neural_state_out_override[0][:, idx]] = torch.tensor(scl_hc.mean_[neural_state_out_override[0][:, idx]], dtype=torch.float, device='cuda')
+                    # for idx in range(N_hn):
+                    #     neural_state_out_override[1][:, ROBOT_ABLATION_IDX, neural_state_out_override[1][:, idx]] = torch.tensor(scl_hc.mean_[neural_state_out_override[1][:, 128+idx]], dtype=torch.float, device='cuda')
+
+
+
 
 
                     action = self.get_action(obses, is_deterministic, neural_obs_override, neural_state_in_override, neural_state_out_override) # neural_obs_override,neural_state_override
@@ -666,9 +782,9 @@ class BasePlayer(object):
                 obses, r, done, info = self.env_step(self.env, action)
 
 
-                if t > 250:
+                # if t > 250:
 
-                    if t > 250:
+                #     if t > 250:
                         
                         ### Applies to all agents
                         # with torch.no_grad():
@@ -702,21 +818,21 @@ class BasePlayer(object):
                         # self.model.a2c_network.actor_mlp[0].weight[:,176:] = torch.nn.Parameter(torch.zeros([512,12], dtype=torch.float, device="cuda")) # actions
 
                         # Gather statistics on random ablations of N neurons
-                        if N_hn > 0:
-                            for i in range(400):  # Assuming self.states.size(1) is 400
-                                mean_tensor_hn = torch.tensor(scl_hc.mean_[      np.array(static_indices_hn[i])], dtype=self.states[0].dtype).to(self.device)
-                                self.states[0][0, i, static_indices_hn[i]] = mean_tensor_hn * torch.ones_like(self.states[0][0, i, static_indices_hn[i]])
+                        # if N_hn > 0:
+                        #     for i in range(400):  # Assuming self.states.size(1) is 400
+                        #         mean_tensor_hn = torch.tensor(scl_hc.mean_[      np.array(static_indices_hn[i])], dtype=self.states[0].dtype).to(self.device)
+                        #         self.states[0][0, i, static_indices_hn[i]] = mean_tensor_hn * torch.ones_like(self.states[0][0, i, static_indices_hn[i]])
 
-                                if done[i]:
-                                    print("hn neurons ablated", static_indices_hn[i])
+                        #         if done[i]:
+                        #             print("hn neurons ablated", static_indices_hn[i])
 
-                        if N_cn > 0:
-                            for i in range(400):  # Assuming self.states.size(1) is 400
-                                mean_tensor_cn = torch.tensor(scl_hc.mean_[128 + np.array(static_indices_cn[i])], dtype=self.states[1].dtype).to(self.device)
-                                self.states[1][0, i, static_indices_cn[i]] = mean_tensor_cn * torch.ones_like(self.states[1][0, i, static_indices_cn[i]])
+                        # if N_cn > 0:
+                        #     for i in range(400):  # Assuming self.states.size(1) is 400
+                        #         mean_tensor_cn = torch.tensor(scl_hc.mean_[128 + np.array(static_indices_cn[i])], dtype=self.states[1].dtype).to(self.device)
+                        #         self.states[1][0, i, static_indices_cn[i]] = mean_tensor_cn * torch.ones_like(self.states[1][0, i, static_indices_cn[i]])
                         
-                                if done[i]:
-                                    print("cn neurons ablated", static_indices_cn[i])
+                        #         if done[i]:
+                        #             print("cn neurons ablated", static_indices_cn[i])
 
 
 
@@ -805,7 +921,7 @@ class BasePlayer(object):
                     if batch_size//self.num_agents == 1 or games_played >= n_games:
                         break
                 
-                plot = True
+                plot = False
 
                 if plot:
 
