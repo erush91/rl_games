@@ -323,13 +323,16 @@ class A2CBuilder(NetworkBuilder):
                 ####### GENE: Added code #######
                 # OVERRIDE OBS (SENSORY) STATE INPUT TO RNN?
                 if override_obs != None:
-                    obs[~override_obs.isnan()] = override_obs[~override_obs.isnan()]
+                    obs_mask = ~override_obs.isnan()
+                    obs[obs_mask] = override_obs[obs_mask]
 
                 ####### GENE: Added code #######
                 # OVERRIDE RNN NEURAL STATE INPUT TO RNN?
                 if override_states_in != None:
-                    states[0][~override_states_in[0].isnan()] = override_states_in[0][~override_states_in[0].isnan()]
-                    states[1][~override_states_in[1].isnan()] = override_states_in[1][~override_states_in[1].isnan()]
+                    hn_in_mask = ~override_states_in[0].isnan()
+                    cn_in_mask = ~override_states_in[1].isnan()
+                    states[0][hn_in_mask] = override_states_in[0][hn_in_mask]
+                    states[1][cn_in_mask] = override_states_in[1][cn_in_mask]
 
                 if self.has_cnn:
                     # for obs shape 4
@@ -429,7 +432,9 @@ class A2CBuilder(NetworkBuilder):
                         ####### GENE: Added code #######
                         # OVERRIDE RNN NEURAL STATE OUTPUT FROM RNN?
                         if override_states_out != None:
-                            a_out_temp4[~override_states_out[0].isnan()] = override_states_out[0][~override_states_out[0].isnan()]
+                            hn_out_mask = ~override_states_out[0].isnan()
+                            cn_out_mask = ~override_states_out[1].isnan()
+                            a_out_temp4[hn_out_mask] = override_states_out[0][hn_out_mask]
 
                         # a_out_temp4[0,:,13] = 0.205488821246418
                         # # # a_out_temp4[0,:,47] = 0.5477552639
