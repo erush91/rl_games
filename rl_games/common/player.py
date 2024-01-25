@@ -95,7 +95,7 @@ class BasePlayer(object):
         self.ablations_obs_in = self.ablation_trial_config.get('ablations_obs_in', 0)
         self.ablations_hn_out = self.ablation_trial_config.get('ablations_hn_out', 0)
         self.ablations_hn_in = self.ablation_trial_config.get('ablations_hn_in', 0)
-        self.ablations_cn = self.ablation_trial_config.get('ablations_cn', 0)
+        self.ablations_cn_in = self.ablation_trial_config.get('ablations_cn_in', 0)
 
     def load_networks(self, params):
         builder = model_builder.ModelBuilder()
@@ -507,19 +507,12 @@ class BasePlayer(object):
             # Initialize the marker outside the loop
             marker, = ax1.plot([0], [0], [0], 'ro')  # Use 'ro' for red circles
 
-            ROBOT_ID_PLOT = 0            
-
-            N_ROBOTS = 400
-
-            # Sample settings
-            N_hn = 0 #26 # Number of random numbers for hn
-            N_cn = 0 # Number of random numbers for cn
-
-            # Pre-generating indices
-            # Initialize the tensor with all Falses
+            ROBOT_ID_PLOT = 0
+            N_ROBOTS = self.env.num_envs
 
             # Generate random row indices for each row
             row_indices = np.tile(np.arange(DIM_A_LSTM_HX), (N_ROBOTS, 1))
+            row_indices2 = np.tile(np.arange(DIM_OBS + DIM_ACT), (N_ROBOTS, 1))
 
             # Shuffle row_indices randomly for each row
             np.apply_along_axis(np.random.shuffle, 1, row_indices)
@@ -533,12 +526,17 @@ class BasePlayer(object):
             ablate_obs_in_np = np.hstack((ablate_obs_in_np, zeros_array))
             ablate_hn_out_np = np.tile(scl_hc.mean_[:128], (N_ROBOTS,1))
             ablate_hn_in_np = np.tile(scl_hc.mean_[:128], (N_ROBOTS,1))
-            ablate_cn_np = np.tile(scl_hc.mean_[128:], (N_ROBOTS,1))
+            ablate_cn_in_np = np.tile(scl_hc.mean_[128:], (N_ROBOTS,1))
+
+            robots_recovered = torch.ones((N_ROBOTS), dtype=torch.bool)
 
             if self.ablation_trial:
 
                 # TARGETED
                 if self.targeted_ablation_trial:
+
+                    # NO OBS ABLATION
+                    ablate_obs_in_np[:,:] = torch.nan
 
                     # OBS ABLATION
                     # ablate_obs_in[:, 0] = 0 # u  317/400 = % (because timing does make a difference!)
@@ -557,42 +555,103 @@ class BasePlayer(object):
                     # neural_obs_override[ROBOT_ABLATION_IDX_FOR_MASK2, 24:36] = 0 # joint vel  315/400 = 78.75%
                     # neural_obs_override[ROBOT_ABLATION_IDX_FOR_MASK2, 136:176] = 0 #
 
+                    # ### Ablate u # 310
                     # ablate_obs_in_np[:,0] = 0
                     # ablate_obs_in_np[:,1:] = torch.nan
 
-                    # Ablate u
-                    ablate_obs_in_np[:,0] = torch.nan
-                    ablate_obs_in_np[:,1] = 0
-                    ablate_obs_in_np[:,2:] = torch.nan
-
-                    # Ablate v
+                    # ### Ablate v # 0
                     # ablate_obs_in_np[:,:1] = torch.nan
-                    # ablate_obs_in_np[:,1] = 0
+                    # ablate_obs_in_np[:,1] = 0 # 65
                     # ablate_obs_in_np[:,2:] = torch.nan
+
+                    # ### Ablate w # 300
+                    # ablate_obs_in_np[:,:2] = torch.nan
+                    # ablate_obs_in_np[:,2] = 0
+                    # ablate_obs_in_np[:,3:] = torch.nan
+
+                    # ### Ablate p # 48
+                    # ablate_obs_in_np[:,:3] = torch.nan
+                    # ablate_obs_in_np[:,3] = 0
+                    # ablate_obs_in_np[:,4:] = torch.nan
+
+                    # ### Ablate q # 395
+                    # ablate_obs_in_np[:,:4] = torch.nan
+                    # ablate_obs_in_np[:,4] = 0
+                    # ablate_obs_in_np[:,5:] = torch.nan
+
+                    # ### Ablate r # 399
+                    # ablate_obs_in_np[:,:5] = torch.nan
+                    # ablate_obs_in_np[:,5] = 0
+                    # ablate_obs_in_np[:,6:] = torch.nan
+
+                    # ### Ablate cos(theta) # 390
+                    # ablate_obs_in_np[:,:6] = torch.nan
+                    # ablate_obs_in_np[:,6] = 0
+                    # ablate_obs_in_np[:,7:] = torch.nan
+
+                    # ### Ablate cos(phi) # 221
+                    # ablate_obs_in_np[:,:7] = torch.nan
+                    # ablate_obs_in_np[:,7] = 0
+                    # ablate_obs_in_np[:,8:] = torch.nan
+
+                    # ### Ablate -sqrt(1 - cos^2(phi) - cos^2(theta)) # 400
+                    # ablate_obs_in_np[:,:8] = torch.nan
+                    # ablate_obs_in_np[:,8] = 0
+                    # ablate_obs_in_np[:,9:] = torch.nan
+
+                    # ### Ablate u* # 400
+                    # ablate_obs_in_np[:,:9] = torch.nan
+                    # ablate_obs_in_np[:,9] = 0
+                    # ablate_obs_in_np[:,10:] = torch.nan
+
+                    # ### Ablate v* # 399
+                    # ablate_obs_in_np[:,:10] = torch.nan
+                    # ablate_obs_in_np[:,10] = 0
+                    # ablate_obs_in_np[:,11:] = torch.nan
+
+                    # ### Ablate r* # 400
+                    # ablate_obs_in_np[:,:11] = torch.nan
+                    # ablate_obs_in_np[:,11] = 0
+                    # ablate_obs_in_np[:,12:] = torch.nan
+
+                    # ### Ablate joint pos # 0
+                    # ablate_obs_in_np[:,:12] = torch.nan
+                    # ablate_obs_in_np[:,24:] = torch.nan
+
+                    # ### Ablate joint vel # 317
+                    # ablate_obs_in_np[:,:24] = torch.nan
+                    # ablate_obs_in_np[:,36:] = torch.nan
+
+                    # ### Ablate depths # 238
+                    # ablate_obs_in_np[:,:36] = torch.nan
+
 
                     ablate_obs_in = torch.tensor(ablate_obs_in_np, dtype=torch.float, device='cuda')
 
                     hn_out_idx_by_ascending_gradient = [101,56,13,108,68,48,98,103,114,47,83,84,90,30,82,69,85,6,111,42,18,35,4,12,22,109,0,2,87,124,112,104,99,102,59,32,49,72,63,45,110,93,14,70,91,5,106,24,7,127,3,65,97,41,118,117,95,64,39,20,34,27,105,79,94,61,89,31,126,19,25,121,115,96,52,71,1,88,44,46,123,113,8,73,62,37,86,100,119,15,51,125,77,28,116,53,16,80,78,9,122,120,40,50,81,66,33,75,67,60,74,11,92,57,26,36,23,54,58,10,17,21,76,29,43,107,38,55] # hn out
-                    targeted_hn_out = hn_out_idx_by_ascending_gradient[self.ablations_hn_out:]
-                    ablate_hn_out_np[:,targeted_hn_out] = torch.nan
+                    hn_out_idx_ablated = hn_out_idx_by_ascending_gradient[:self.ablations_hn_out]
+                    hn_out_idx_not_ablated = hn_out_idx_by_ascending_gradient[self.ablations_hn_out:]
+                    ablate_hn_out_np[:,hn_out_idx_not_ablated] = torch.nan
                     ablate_hn_out = torch.tensor(ablate_hn_out_np, dtype=torch.float, device='cuda').unsqueeze(0)
 
-                    # hn_in_idx_by_ascending_gradient = [101,56,13,108,68,48,98,103,114,47,83,84,90,30,82,69,85,6,111,42,18,35,4,12,22,109,0,2,87,124,112,104,99,102,59,32,49,72,63,45,110,93,14,70,91,5,106,24,7,127,3,65,97,41,118,117,95,64,39,20,34,27,105,79,94,61,89,31,126,19,25,121,115,96,52,71,1,88,44,46,123,113,8,73,62,37,86,100,119,15,51,125,77,28,116,53,16,80,78,9,122,120,40,50,81,66,33,75,67,60,74,11,92,57,26,36,23,54,58,10,17,21,76,29,43,107,38,55] # hn out
-                    hn_in_idx_by_ascending_gradient = [27,126,121,12,11,110,35,70,54,0,13,31,56,114,34,101,115,111,61,26,6,55,90,49,5,98,113,53,64,37,104,43,72,28,22,59,19,21,87,107,63,88,51,76,30,44,50,82,60,123,94,42,52,78,92,109,57,96,77,1,99,95,8,86,9,125,122,91,15,2,71,17,41,62,20,117,79,80,67,24,4,39,116,10,93,65,81,89,46,120,23,118,33,85,66,112,14,73,97,83,38,105,84,102,69,40,3,127,32,103,16,7,124,58,100,47,36,108,29,119,75,106,74,48,45,68,25,18] # hn out
-                    targeted_hn_in = hn_in_idx_by_ascending_gradient[self.ablations_hn_in:]
-                    ablate_hn_in_np[:,targeted_hn_in] = torch.nan
+                    hn_in_idx_by_ascending_gradient = [54,119,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,120,121,122,123,124,125,126,127] #hn in (from sampling, NOT GRADIENT)
+                    # hn_in_idx_by_ascending_gradient = [27,126,121,12,11,110,35,70,54,0,13,31,56,114,34,101,115,111,61,26,6,55,90,49,5,98,113,53,64,37,104,43,72,28,22,59,19,21,87,107,63,88,51,76,30,44,50,82,60,123,94,42,52,78,92,109,57,96,77,1,99,95,8,86,9,125,122,91,15,2,71,17,41,62,20,117,79,80,67,24,4,39,116,10,93,65,81,89,46,120,23,118,33,85,66,112,14,73,97,83,38,105,84,102,69,40,3,127,32,103,16,7,124,58,100,47,36,108,29,119,75,106,74,48,45,68,25,18] # hn in
+                    hn_in_idx_ablated = hn_in_idx_by_ascending_gradient[:self.ablations_hn_in]
+                    hn_in_idx_not_ablated = hn_in_idx_by_ascending_gradient[self.ablations_hn_in:]
+                    ablate_hn_in_np[:,hn_in_idx_not_ablated] = torch.nan
                     ablate_hn_in = torch.tensor(ablate_hn_in_np, dtype=torch.float, device='cuda').unsqueeze(0)
 
-                    # cn_in_idx_by_ascending_gradient = [6, 18, 73, 94] #cn (from sampling)
-                    cn_in_idx_by_ascending_gradient = [108,6,101,2,30,47,13,42,89,90,118,98,85,124,99,68,32,24,10,72,3,61,19,109,21,31,22,103,56,69,114,78,46,81,35,97,84,110,4,104,14,50,63,49,79,77,93,106,44,62,70,73,91,41,11,102,95,120,23,88,26,5,18,80,48,20,125,117,112,52,65,36,37,64,127,96,126,55,59,115,33,58,83,123,71,1,27,100,39,94,8,9,53,116,86,113,67,34,51,76,28,40,25,16,60,15,87,54,105,122,92,0,119,45,75,74,107,29,7,111,66,121,17,82,57,12,38,43] #cn
-                    targeted_cn = cn_in_idx_by_ascending_gradient[self.ablations_cn:]
-                    ablate_cn_np[:,targeted_cn] = torch.nan
-                    ablate_cn = torch.tensor(ablate_cn_np, dtype=torch.float, device='cuda').unsqueeze(0)
+                    cn_in_idx_by_ascending_gradient = [6,13,18,54,60,73,94,0,1,2,3,4,5,7,8,9,10,11,12,14,15,16,17,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,55,56,57,58,59,61,62,63,64,65,66,67,68,69,70,71,72,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127] #cn (from sampling, NOT GRADIENT)
+                    # cn_in_idx_by_ascending_gradient = [108,6,101,2,30,47,13,42,89,90,118,98,85,124,99,68,32,24,10,72,3,61,19,109,21,31,22,103,56,69,114,78,46,81,35,97,84,110,4,104,14,50,63,49,79,77,93,106,44,62,70,73,91,41,11,102,95,120,23,88,26,5,18,80,48,20,125,117,112,52,65,36,37,64,127,96,126,55,59,115,33,58,83,123,71,1,27,100,39,94,8,9,53,116,86,113,67,34,51,76,28,40,25,16,60,15,87,54,105,122,92,0,119,45,75,74,107,29,7,111,66,121,17,82,57,12,38,43] #cn
+                    cn_in_idx_ablated = cn_in_idx_by_ascending_gradient[:self.ablations_cn_in]
+                    cn_in_idx_not_ablated = cn_in_idx_by_ascending_gradient[self.ablations_cn_in:]
+                    ablate_cn_in_np[:,cn_in_idx_not_ablated] = torch.nan
+                    ablate_cn_in = torch.tensor(ablate_cn_in_np, dtype=torch.float, device='cuda').unsqueeze(0)
             
                 # RANDOM
                 else:
 
-                    ablate_obs_in_np[np.arange(N_ROBOTS).reshape(-1, 1), row_indices[:, :DIM_OBS+DIM_ACT-self.ablations_obs_in]] = torch.nan
+                    ablate_obs_in_np[np.arange(N_ROBOTS).reshape(-1, 1), row_indices2[:, :DIM_OBS+DIM_ACT-self.ablations_obs_in]] = torch.nan
                     ablate_obs_in = torch.tensor(ablate_obs_in_np, dtype=torch.float, device='cuda')
 
                     ablate_hn_out_np[np.arange(N_ROBOTS).reshape(-1, 1), row_indices[:, :DIM_A_LSTM_HX-self.ablations_hn_out]] = torch.nan
@@ -601,8 +660,8 @@ class BasePlayer(object):
                     ablate_hn_in_np[np.arange(N_ROBOTS).reshape(-1, 1), row_indices[:, :DIM_A_LSTM_HX-self.ablations_hn_in]] = torch.nan
                     ablate_hn_in = torch.tensor(ablate_hn_in_np, dtype=torch.float, device='cuda').unsqueeze(0)
 
-                    ablate_cn_np[np.arange(N_ROBOTS).reshape(-1, 1), row_indices[:, :DIM_A_LSTM_CX-self.ablations_cn]] = torch.nan
-                    ablate_cn = torch.tensor(ablate_cn_np, dtype=torch.float, device='cuda').unsqueeze(0)
+                    ablate_cn_in_np[np.arange(N_ROBOTS).reshape(-1, 1), row_indices[:, :DIM_A_LSTM_CX-self.ablations_cn_in]] = torch.nan
+                    ablate_cn_in = torch.tensor(ablate_cn_in_np, dtype=torch.float, device='cuda').unsqueeze(0)
 
             for t in range(self.max_steps - 1):
                 print("t:", t)
@@ -631,8 +690,8 @@ class BasePlayer(object):
                             ROBOT_ABLATION_IDX_FOR_MASK = self.env.perturb_started.unsqueeze(-1).repeat(1, 128).unsqueeze(0)
                         # ABLATION NEURONS FOR ENTIRITY OF TRIAL
                         else:
-                            ROBOT_ABLATION_IDX_FOR_MASK2 = torch.ones((400,188), dtype=torch.bool)
-                            ROBOT_ABLATION_IDX_FOR_MASK = torch.ones((1,400,128), dtype=torch.bool)
+                            ROBOT_ABLATION_IDX_FOR_MASK2 = torch.ones((N_ROBOTS,188), dtype=torch.bool)
+                            ROBOT_ABLATION_IDX_FOR_MASK = torch.ones((1,N_ROBOTS,128), dtype=torch.bool)
 
                         ablate_obs_in_trial = ablate_obs_in.detach().clone()
                         ablate_obs_in_trial[~ROBOT_ABLATION_IDX_FOR_MASK2] = torch.nan
@@ -643,7 +702,7 @@ class BasePlayer(object):
                         ablate_hn_in_trial = ablate_hn_in.detach().clone()
                         ablate_hn_in_trial[~ROBOT_ABLATION_IDX_FOR_MASK] = torch.nan
 
-                        ablate_cn_trial = ablate_cn.detach().clone()
+                        ablate_cn_trial = ablate_cn_in.detach().clone()
                         ablate_cn_trial[~ROBOT_ABLATION_IDX_FOR_MASK] = torch.nan
 
                         neural_obs_override = torch.full((N_ROBOTS, DIM_OBS + DIM_ACT), torch.nan, device='cuda')
@@ -738,6 +797,14 @@ class BasePlayer(object):
                         
                 obses, r, done, info = self.env_step(self.env, action)
 
+                # if t == 499:
+                #     print(robots_recovered)
+                #     neural_state_in_override[1]
+                #     pd.DataFrame(robots_recovered.cpu().numpy()).to_csv('recoveries.csv')
+                #     pd.DataFrame(neural_state_in_override[0].squeeze().cpu().numpy()).to_csv(str('hn_in_ablations.csv'))
+                #     pd.DataFrame(neural_state_in_override[1].squeeze().cpu().numpy()).to_csv(str('cn_in_ablations.csv'))
+                #     pd.DataFrame(neural_state_out_override[0].squeeze().cpu().numpy()).to_csv(str('hn_out_ablations.csv'))
+
 
                 # if t > 250:
 
@@ -775,13 +842,11 @@ class BasePlayer(object):
                         # self.model.a2c_network.actor_mlp[0].weight[:,176:] = torch.nn.Parameter(torch.zeros([512,12], dtype=torch.float, device="cuda")) # actions
 
 
-
-
                 hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
                 hc_pc = pca_hc.transform(scl_hc.transform(hc.detach().cpu().numpy()))
                 hc_pc_last = hc_pc
 
-                if self.export_data:                  
+                if self.export_data:
 
                     condition = torch.arange(self.env.num_environments)
                     # condition = torch.arange(self.env.num_environments / 5).repeat(5)
@@ -824,6 +889,7 @@ class BasePlayer(object):
 
                 all_done_indices = done.nonzero(as_tuple=False)
                 done_indices = all_done_indices[::self.num_agents]
+                robots_recovered[done_indices] = 0
                 done_count = len(done_indices)
                 games_played += done_count
                 print('gameslost:', games_played, '    games won:', self.env.num_environments - games_played)
