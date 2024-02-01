@@ -41,25 +41,22 @@ class PpoPlayerContinuous(BasePlayer):
         self.model.eval()
         self.is_rnn = self.model.is_rnn()
 
-    def get_action(self, obs, is_deterministic = False, neural_obs_override=None, neural_state_in_override=None, neural_state_out_override=None):
+    def get_action(self, obs, is_deterministic = False, override_dict=None):
         if self.has_batch_dimension == False:
             obs = unsqueeze_obs(obs)
         obs = self._preproc_obs(obs)
         
-        if neural_obs_override != None:
-            if self.has_batch_dimension == False:
-                neural_obs_override = unsqueeze_obs(neural_obs_override)
-            neural_obs_override = self._preproc_obs(neural_obs_override)
+        if override_dict != None:
+            if override_dict['obs'] != None:
+                if self.has_batch_dimension == False:
+                    override_dict['obs'] = unsqueeze_obs(override_dict['obs'])
+                override_dict['obs'] = self._preproc_obs(override_dict['obs'])
         input_dict = {
+            'train': self.env.cfg['train'],
             'is_train': False,
             'prev_actions': None, 
             'obs' : obs,
             'rnn_states' : self.states
-        }
-        override_dict = {
-            'obs' : neural_obs_override,
-            'rnn_states_in' : neural_state_in_override,
-            'rnn_states_out' : neural_state_out_override
         }
         with torch.no_grad():
             res_dict = self.model(input_dict, override_dict)
@@ -70,15 +67,16 @@ class PpoPlayerContinuous(BasePlayer):
         # self.states = tuple(tensor.clone().detach().requires_grad_(True) for tensor in res_dict['rnn_states'])
         # Assuming res_dict['rnn_states'] is a tuple of tensors
 
-        rnn_states_list = list(res_dict['rnn_states'])  # Convert tuple to list
+        if res_dict['rnn_states'] != None:
+            rnn_states_list = list(res_dict['rnn_states'])  # Convert tuple to list
 
-        # Iterate over the list and set requires_grad to True for each tensor
-        for i in range(len(rnn_states_list)):
-            if isinstance(rnn_states_list[i], torch.Tensor):  # Check if the item is a tensor
-                rnn_states_list[i].requires_grad_()  # Set requires_grad to True in-place
+            # Iterate over the list and set requires_grad to True for each tensor
+            for i in range(len(rnn_states_list)):
+                if isinstance(rnn_states_list[i], torch.Tensor):  # Check if the item is a tensor
+                    rnn_states_list[i].requires_grad_()  # Set requires_grad to True in-place
 
-        # Convert the list back to a tuple and assign it to self.states
-        self.states = tuple(rnn_states_list)
+            # Convert the list back to a tuple and assign it to self.states
+            self.states = tuple(rnn_states_list)
 
         self.layers_out = res_dict['layers_out']
         if is_deterministic:

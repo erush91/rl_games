@@ -91,6 +91,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         curr_e_clip = self.e_clip
 
         batch_dict = {
+            'train': True,
             'is_train': True,
             'prev_actions': actions_batch, 
             'obs' : obs_batch,
@@ -106,7 +107,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 batch_dict['dones'] = input_dict['dones']            
 
         with torch.cuda.amp.autocast(enabled=self.mixed_precision):
-            res_dict = self.model(batch_dict)
+            res_dict = self.model(batch_dict, None)
             action_log_probs = res_dict['prev_neglogp']
             values = res_dict['values']
             entropy = res_dict['entropy']

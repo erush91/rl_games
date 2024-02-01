@@ -517,13 +517,12 @@ class BasePlayer(object):
             # Shuffle row_indices randomly for each row
             np.apply_along_axis(np.random.shuffle, 1, row_indices)
 
-            # Initialize with mean neural values
+            # Initialize obs with mean neural values
             ablate_obs_in_np = np.tile(scl_obs.mean_, (N_ROBOTS,1))
-
-            # Create an array of zeros with the same number of rows as mean_array
-            zeros_array = np.zeros((ablate_obs_in_np.shape[0], DIM_ACT))
-
+            zeros_array = np.zeros((ablate_obs_in_np.shape[0], DIM_ACT)) # zeros for actions in obs state
             ablate_obs_in_np = np.hstack((ablate_obs_in_np, zeros_array))
+
+            # Initialize recurrent neurons with mean neural values
             ablate_hn_out_np = np.tile(scl_hc.mean_[:128], (N_ROBOTS,1))
             ablate_hn_in_np = np.tile(scl_hc.mean_[:128], (N_ROBOTS,1))
             ablate_cn_in_np = np.tile(scl_hc.mean_[128:], (N_ROBOTS,1))
@@ -678,9 +677,10 @@ class BasePlayer(object):
                         c_h_last = self.states[2][0,:,:] # self.layers_out['c_rnn'][1][0][0,0,:]
                         c_c_last = self.states[3][0,:,:] # self.layers_out['c_rnn'][1][1][0,0,:]
                     
-                    neural_obs_override = None
-                    neural_state_in_override = None
-                    neural_state_out_override = None
+                    neural_override = {}
+                    neural_override['obs'] = None
+                    neural_override['rnn_states_in'] = None
+                    neural_override['rnn_states_out'] = None
 
                     if self.ablation_trial:
 
@@ -705,14 +705,14 @@ class BasePlayer(object):
                         ablate_cn_trial = ablate_cn_in.detach().clone()
                         ablate_cn_trial[~ROBOT_ABLATION_IDX_FOR_MASK] = torch.nan
 
-                        neural_obs_override = torch.full((N_ROBOTS, DIM_OBS + DIM_ACT), torch.nan, device='cuda')
-                        neural_state_in_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
-                        neural_state_out_override = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                        neural_override['obs'] = torch.full((N_ROBOTS, DIM_OBS + DIM_ACT), torch.nan, device='cuda')
+                        neural_override['rnn_states_in'] = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
+                        neural_override['rnn_states_out'] = [torch.full((1, N_ROBOTS, DIM_A_LSTM_HX), torch.nan, device='cuda'), torch.full((1, N_ROBOTS, DIM_A_LSTM_CX), torch.nan, device='cuda')]
                         
                         neural_obs_override = ablate_obs_in_trial
-                        neural_state_out_override[0][:, :, :] = ablate_hn_out_trial
-                        neural_state_in_override[0][:, :, :] = ablate_hn_in_trial
-                        neural_state_in_override[1][:, :, :] = ablate_cn_trial
+                        neural_override['rnn_states_out'][0][:, :, :] = ablate_hn_out_trial
+                        neural_override['rnn_states_in'][0][:, :, :] = ablate_hn_in_trial
+                        neural_override['rnn_states_in'][1][:, :, :] = ablate_cn_trial
                         
                         ### NEURAL OVERRIDE STATES IN ###
                         ### Four neurons identified through SAMPLING-BASED METHOD, implicated in more than 40% of the failed trials
@@ -766,7 +766,7 @@ class BasePlayer(object):
 
 
 
-                    action = self.get_action(obses, is_deterministic, neural_obs_override, neural_state_in_override, neural_state_out_override) # neural_obs_override,neural_state_override
+                    action = self.get_action(obses, is_deterministic, neural_override) # neural_obs_override,neural_state_override
                     
                     # compute internal LSTM states - confirmed that both c1 and c2 contribute, (f != ones) does not forget everything : )
                     if rnn_type == 'lstm':
@@ -841,44 +841,44 @@ class BasePlayer(object):
                         # self.model.a2c_network.actor_mlp[0].weight[:,36:176] = torch.nn.Parameter(torch.zeros([512,140], dtype=torch.float, device="cuda")) # depth sensors
                         # self.model.a2c_network.actor_mlp[0].weight[:,176:] = torch.nn.Parameter(torch.zeros([512,12], dtype=torch.float, device="cuda")) # actions
 
+                if self.states != None:
+                    hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
+                    hc_pc = pca_hc.transform(scl_hc.transform(hc.detach().cpu().numpy()))
+                    hc_pc_last = hc_pc
 
-                hc = torch.cat((self.states[0][0,:,:], self.states[1][0,:,:]), dim=1)
-                hc_pc = pca_hc.transform(scl_hc.transform(hc.detach().cpu().numpy()))
-                hc_pc_last = hc_pc
+                # if self.export_data:
 
-                if self.export_data:
+                #     condition = torch.arange(self.env.num_environments)
+                #     # condition = torch.arange(self.env.num_environments / 5).repeat(5)
+                #     time = torch.Tensor([t * self.env.dt]).repeat(self.env.num_environments)
 
-                    condition = torch.arange(self.env.num_environments)
-                    # condition = torch.arange(self.env.num_environments / 5).repeat(5)
-                    time = torch.Tensor([t * self.env.dt]).repeat(self.env.num_environments)
+                #     if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
+                #         tensor_dict['FT_FORCE']['data'][t,:,:] = info['foot_forces']
+                #         tensor_dict['PERTURB_BEGIN']['data'][t,:,:] = info['perturb_begin'].view(-1, 1)
+                #         tensor_dict['PERTURB']['data'][t,:,:] = info['perturb'].view(-1, 1)
+                #         tensor_dict['STANCE_BEGIN']['data'][t,:,:] = info['stance_begin'].view(-1, 1)
+                #     tensor_dict['OBS']['data'][t,:,:] = obses[:,:DIM_OBS]
+                #     tensor_dict['ACT']['data'][t,:,:] = action
+                #     tensor_dict['REWARD']['data'][t,:,:] = torch.unsqueeze(r[:], dim=1)
+                #     tensor_dict['DONE']['data'][t,:,:] = torch.unsqueeze(done[:], dim=1)
 
-                    if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
-                        tensor_dict['FT_FORCE']['data'][t,:,:] = info['foot_forces']
-                        tensor_dict['PERTURB_BEGIN']['data'][t,:,:] = info['perturb_begin'].view(-1, 1)
-                        tensor_dict['PERTURB']['data'][t,:,:] = info['perturb'].view(-1, 1)
-                        tensor_dict['STANCE_BEGIN']['data'][t,:,:] = info['stance_begin'].view(-1, 1)
-                    tensor_dict['OBS']['data'][t,:,:] = obses[:,:DIM_OBS]
-                    tensor_dict['ACT']['data'][t,:,:] = action
-                    tensor_dict['REWARD']['data'][t,:,:] = torch.unsqueeze(r[:], dim=1)
-                    tensor_dict['DONE']['data'][t,:,:] = torch.unsqueeze(done[:], dim=1)
+                #     tensor_dict['A_MLP_XX']['data'][t,:,:] = self.layers_out['actor_mlp'] # torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
+                #     tensor_dict['C_MLP_XX']['data'][t,:,:] = self.layers_out['critic_mlp'] # lstm cn (long-term memory)
 
-                    tensor_dict['A_MLP_XX']['data'][t,:,:] = self.layers_out['actor_mlp'] # torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
-                    tensor_dict['C_MLP_XX']['data'][t,:,:] = self.layers_out['critic_mlp'] # lstm cn (long-term memory)
+                #     if rnn_type == 'lstm':
+                #         tensor_dict['A_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:]) # lstm hn (short-term memory)
+                #         tensor_dict['A_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:]) # lstm cn (long-term memory)
+                #         tensor_dict['A_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['A_LSTM_HX']['data'][t,:,:], tensor_dict['A_LSTM_CX']['data'][t,:,:]), dim=1)
 
-                    if rnn_type == 'lstm':
-                        tensor_dict['A_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:]) # lstm hn (short-term memory)
-                        tensor_dict['A_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:]) # lstm cn (long-term memory)
-                        tensor_dict['A_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['A_LSTM_HX']['data'][t,:,:], tensor_dict['A_LSTM_CX']['data'][t,:,:]), dim=1)
+                #         tensor_dict['C_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
+                #         tensor_dict['C_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[3][0,:,:]) # lstm cn (long-term memory)
+                #         tensor_dict['C_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['C_LSTM_HX']['data'][t,:,:], tensor_dict['C_LSTM_CX']['data'][t,:,:]), dim=1)
 
-                        tensor_dict['C_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
-                        tensor_dict['C_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[3][0,:,:]) # lstm cn (long-term memory)
-                        tensor_dict['C_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['C_LSTM_HX']['data'][t,:,:], tensor_dict['C_LSTM_CX']['data'][t,:,:]), dim=1)
-
-                    elif rnn_type == 'gru':
-                        tensor_dict['A_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:])
-                        tensor_dict['C_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:])
-                    else:
-                        print("rnn model not supported")
+                #     elif rnn_type == 'gru':
+                #         tensor_dict['A_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:])
+                #         tensor_dict['C_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:])
+                #     else:
+                #         print("rnn model not supported")
 
                 cr += r
                 steps += 1
