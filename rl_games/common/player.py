@@ -81,7 +81,7 @@ class BasePlayer(object):
         self.export_data = self.player_config.get('export_data', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
-        if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
+        if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain'or self.env.cfg['name'] == 'CassieTerrain':
             self.max_steps = 501 # 3001 # 1501 # 10001 # 1001 # 108000 // 4
         if self.env.cfg['name'] == 'ShadowHand':
             self.max_steps = 501
@@ -1027,7 +1027,7 @@ class BasePlayer(object):
             # Create a folder name using the current date and time
             date_str = current_datetime.strftime("%Y-%m-%d-%H-%M")
 
-            if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
+            if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain' or self.env.cfg['name'] == 'CassieTerrain':
                 exp_str = f"_u[\
                     {self.env.specified_command_x_range[0]},\
                     {self.env.specified_command_x_range[1]},\
