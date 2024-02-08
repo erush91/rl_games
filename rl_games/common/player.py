@@ -12,10 +12,13 @@ from rl_games.common import env_configurations, vecenv
 
 from pathlib import Path
 
+import pickle as pk
 import pandas as pd
-import dask as dd
 
 import sklearn.preprocessing
+
+# Import the required library
+import matplotlib.pyplot as plt
 
 import matplotlib
 matplotlib.use('TkAgg')  # Replace 'TkAgg' with another backend if needed
@@ -78,7 +81,10 @@ class BasePlayer(object):
             self.is_deterministic = self.player_config.get(
                 'deterministic', True)
         self.n_game_life = self.player_config.get('n_game_life', 1)
-        self.export_data = self.player_config.get('export_data', True)
+        self.export_data = self.env.cfg['env']['output'].get('export_data', False)
+        self.export_data_path = self.env.cfg['env']['output'].get('export_data_path', '')        
+        self.export_data_actor = self.env.cfg['env']['output'].get('export_data_actor', False)
+        self.export_data_critic = self.env.cfg['env']['output'].get('export_data_critic', False)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
         if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain'or self.env.cfg['name'] == 'CassieTerrain':
@@ -88,14 +94,14 @@ class BasePlayer(object):
 
         self.device = torch.device(self.device_name)
 
-        self.ablation_trial = self.player_config.get('ablation_trial', False)
-        self.ablation_trial_config = self.player_config.get('ablate', {})
-        self.targeted_ablation_trial = self.ablation_trial_config.get('targeted_ablation_trial', False)
-        self.wait_until_disturbance = self.ablation_trial_config.get('wait_until_disturbance', False)
-        self.ablations_obs_in = self.ablation_trial_config.get('ablations_obs_in', 0)
-        self.ablations_hn_out = self.ablation_trial_config.get('ablations_hn_out', 0)
-        self.ablations_hn_in = self.ablation_trial_config.get('ablations_hn_in', 0)
-        self.ablations_cn_in = self.ablation_trial_config.get('ablations_cn_in', 0)
+        self.ablation_trial = self.env.cfg['env']['ablate'].get('ablation_trial', False)
+        self.targeted_ablation_trial = self.env.cfg['env']['ablate'].get('targeted_ablation_trial', False)
+        self.wait_until_disturbance = self.env.cfg['env']['ablate'].get('wait_until_disturbance', False)
+        self.ablation_scl_pca_path = self.env.cfg['env']['ablate'].get('ablation_scl_pca_path', '')
+        self.ablations_obs_in = self.env.cfg['env']['ablate'].get('ablations_obs_in', 0)
+        self.ablations_hn_out = self.env.cfg['env']['ablate'].get('ablations_hn_out', 0)
+        self.ablations_hn_in = self.env.cfg['env']['ablate'].get('ablations_hn_in', 0)
+        self.ablations_cn_in = self.env.cfg['env']['ablate'].get('ablations_cn_in', 0)
 
     def load_networks(self, params):
         builder = model_builder.ModelBuilder()
@@ -237,7 +243,6 @@ class BasePlayer(object):
         DIM_A_GRU_HX = 0
         DIM_C_GRU_HX = 0
 
-
         DIM_A_MLP_XX = self.config['network'].network_builder.params['mlp']['units'][-1]
         DIM_C_MLP_XX = self.config['network'].network_builder.params['mlp']['units'][-1]
 
@@ -260,28 +265,33 @@ class BasePlayer(object):
             DIM_A_GRU_HX = self.model.get_default_rnn_state()[0].size(dim=2) # gru hn
             DIM_C_GRU_HX = self.model.get_default_rnn_state()[1].size(dim=2) # gru hn
             
-        tensor_specs = OrderedDict([
-            ('ENV', 1),
-            ('TIME', 1),
-            ('DONE', 1),
-            ('REWARD', 1),
-            ('ACT', DIM_ACT),
-            ('OBS', DIM_OBS),
-            ('A_MLP_XX', DIM_A_MLP_XX),
-            ('A_LSTM_HC', DIM_A_LSTM_HC),
-            ('A_LSTM_CX', DIM_A_LSTM_CX),
-            ('A_LSTM_C1X', DIM_A_LSTM_CX),
-            ('A_LSTM_C2X', DIM_A_LSTM_CX),
-            ('A_LSTM_HX', DIM_A_LSTM_HX),
-            ('C_MLP_XX', DIM_C_MLP_XX),
-            ('C_LSTM_HC', DIM_C_LSTM_HC),
-            ('C_LSTM_CX', DIM_C_LSTM_CX),
-            ('C_LSTM_C1X', DIM_C_LSTM_CX),
-            ('C_LSTM_C2X', DIM_C_LSTM_CX),
-            ('C_LSTM_HX', DIM_C_LSTM_HX),
-            ('A_GRU_HX', DIM_A_GRU_HX),
-            ('C_GRU_HX', DIM_C_GRU_HX),
-        ])
+        tensor_specs = OrderedDict()
+        tensor_specs['ENV'] = 1
+        tensor_specs['TIME'] = 1
+        tensor_specs['DONE'] = 1
+        tensor_specs['REWARD'] = 1
+        tensor_specs['ACT'] = DIM_ACT
+        tensor_specs['OBS'] = DIM_OBS
+        if rnn_type == 'lstm':
+            if self.export_data_actor:
+                tensor_specs['A_MLP_XX'] = DIM_A_MLP_XX
+                tensor_specs['A_LSTM_HC'] = DIM_A_LSTM_HC
+                tensor_specs['A_LSTM_CX'] = DIM_A_LSTM_CX
+                tensor_specs['A_LSTM_C1X'] = DIM_A_LSTM_CX
+                tensor_specs['A_LSTM_C2X'] = DIM_A_LSTM_CX
+                tensor_specs['A_LSTM_HX'] = DIM_A_LSTM_HX
+            if self.export_data_critic:
+                tensor_specs['C_MLP_XX'] = DIM_C_MLP_XX
+                tensor_specs['C_LSTM_HC'] = DIM_C_LSTM_HC
+                tensor_specs['C_LSTM_CX'] = DIM_C_LSTM_CX
+                tensor_specs['C_LSTM_C1X'] = DIM_C_LSTM_CX
+                tensor_specs['C_LSTM_C2X'] = DIM_C_LSTM_CX
+                tensor_specs['C_LSTM_HX'] = DIM_C_LSTM_HX
+        if rnn_type == 'gru':
+            if self.export_actor:
+                tensor_specs['A_GRU_HX'] = DIM_A_GRU_HX
+            if self.export_critic:
+                tensor_specs['C_GRU_HX'] = DIM_C_GRU_HX
 
         if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
             new_tensor_specs = OrderedDict()
@@ -343,6 +353,10 @@ class BasePlayer(object):
         if self.config['name'] == "AnymalTerrain" or self.config['name'] == "A1Terrain":
             tensor_dict['ACT']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_anymalterrain.csv', header=None).values[:,0]
             tensor_dict['OBS']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_anymalterrain.csv', header=None).values[:,0]
+
+        if self.config['name'] == "CassieTerrain":
+            tensor_dict['ACT']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_cassieterrain.csv', header=None).values[:,0]
+            tensor_dict['OBS']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/obs_cassieterrain.csv', header=None).values[:,0]
 
         if self.config['name'] == "ShadowHandAsymmLSTM":
             tensor_dict['ACT']['cols'] = pd.read_csv('/home/gene/code/NEURO/neuro-rl-sandbox/neuro-rl/neuro_rl/legend/act_shadowhand.csv', header=None).values[:,0]
@@ -425,65 +439,12 @@ class BasePlayer(object):
 
             print_game_res = False
 
-            import pickle as pk
-            # AnymalTerrain (3) (perturb longer w/ noise) (with HC = (HC, CX))
-            DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-05-31_09-02-37_u[-1.0,1.0,21]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[10]/'
-            # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-02_10-25-10_u[-1.0,1.0,21]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[10]/'
-            
-            # AnymalTerrain (1) (no bias) no bias but pos u and neg u, no noise/perturb (with HC = (HC, CX))
-            # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-05-30_22-30-47_u[-1.0,1.0,21]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[10]/'
-
-
-            # AnymalTerrain w/ 2 LSTM (no act in obs, no zero small commands) (BEST) (2-LSTM-DIST) (perturb +/- 500N, 1% begin, 98% cont) (seq_len=seq_length=horizon_length=16) (w/ bias)
-            DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-04_15-17-09_u[0.3,1.0,16]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[100]/'
-
-            # AnymalTerrain w/ 2 LSTM (no act in obs, no zero small commands) (BEST) (2-LSTM16-DIST500) (perturb +/- 500N, 1% begin, 98% cont) (seq_len=seq_length=horizon_length=16) (w/o bias)
-            DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-05_10-56-19_u[0.3,1.0,16]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/' # w/o noise
-            # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-05_11-01-54_u[0.3,1.0,16]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/' # w/ noise
-
-            # AnymalTerrain w/ 2 LSTM (no act in obs, no zero small commands) (BEST) (2-LSTM4-DIST500) (perturb +/- 500N, 1% begin, 98% cont) (seq_len=seq_length=4, horizon_length=16) (w/o bias)
-            # DATA_PATH = '/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-06-06_20-23-04_u[0.4,1.0,14]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]_LSTM4-DIST500-noperturb/' 
-
-            # post_corl_fix
-
-
-            # **LSTM16-DIST500 4/4 steps, W/ TERRAIN ()
-            # lstm_model = torch.load('/media/GENE_EXT4_2TB/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/runs/AnymalTerrain_2023-08-24_15-24-12/nn/last_AnymalTerrain_ep_3200_rew_20.145746.pth')
-            DATA_PATH = '/media/GENE_EXT4_2TB/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-08-27-16-41_u[0.4,1.0,14]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/'
-
-            # **LSTM16-NODIST 1/4 steps (CoRL), W/ TERRAIN ()
-            # lstm_model = torch.load('/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/runs/AnymalTerrain_07-03-29-04/nn/last_AnymalTerrain_ep_3800_rew_20.163399.pth')
-            # DATA_PATH = '/media/GENE_EXT4_2TB/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-08-27-16-52_u[0.4,1.0,14]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/'
-
-            # **LSTM16-NODIST 4/4 steps, W/ TERRAIN ()
-            # lstm_model = torch.load('/home/gene/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/runs/2023-08-27-17-23_AnymalTerrain/nn/last_AnymalTerrain_ep_2900_rew_20.2482.pth')
-            # DATA_PATH = '/media/GENE_EXT4_2TB/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-08-28-08-46_u[0.4,1.0,14]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/'
-
-            # *LSTM16-DIST500 4/4 steps, NO TERRAIN (LESS ROBUST W/O TERRAIN!!!)
-            # lstm_model = torch.load('/media/GENE_EXT4_2TB/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/runs/AnymalTerrain_2023-08-24_14-17-13/nn/last_AnymalTerrain_ep_900_rew_20.139568.pth')
-            # DATA_PATH = '/media/GENE_EXT4_2TB/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-08-27-16-56_u[0.4,1.0,14]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[50]/'
-
-            # **LSTM16-DIST500 4/4 steps, W/ TERRAIN () 0.4-1.0 w/ -3.5xBW 100ms
-            DATA_PATH = '/media/GENE_EXT4_2TB/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-09-05-15-47_u[1.0,1.0,1]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[4]/'
-
-
-            ### FRONTIERS
-            # **LSTM16-DIST500 4/4 steps, W/ TERRAIN () 0.4-1.0 w/ -3.5xBW 100ms
-            DATA_PATH = '/media/GENE_EXT4_2TB/code/NEURO/neuro-rl-sandbox/IsaacGymEnvs/isaacgymenvs/data/2023-09-27-15-49_u[1.0,1.0,1]_v[0.0,0.0,1]_r[0.0,0.0,1]_n[10]/'
-
             # load scaler and pca transforms
-            # scl_hx = pk.load(open(DATA_PATH + 'A_LSTM_HX_SPEED_SCL.pkl','rb'))
-            # pca_hx = pk.load(open(DATA_PATH + 'A_LSTM_HX_SPEED_PCA.pkl','rb'))
-            # scl_cx = pk.load(open(DATA_PATH + 'A_LSTM_CX_SPEED_SCL.pkl','rb'))
-            # pca_cx = pk.load(open(DATA_PATH + 'A_LSTM_CX_SPEED_PCA.pkl','rb'))
-            scl_hc = pk.load(open(DATA_PATH + 'A_LSTM_HC_SCL.pkl','rb'))
-            pca_hc = pk.load(open(DATA_PATH + 'A_LSTM_HC_PCA.pkl','rb'))
+            scl_hc = pk.load(open(self.ablation_scl_pca_path + 'A_LSTM_HC_SCL.pkl','rb'))
+            pca_hc = pk.load(open(self.ablation_scl_pca_path + 'A_LSTM_HC_PCA.pkl','rb'))
 
-            scl_obs = pk.load(open(DATA_PATH + 'OBS_SCL.pkl','rb'))
-            pca_obs = pk.load(open(DATA_PATH + 'OBS_PCA.pkl','rb'))
-
-            # Import the required library
-            import matplotlib.pyplot as plt
+            scl_obs = pk.load(open(self.ablation_scl_pca_path + 'OBS_SCL.pkl','rb'))
+            pca_obs = pk.load(open(self.ablation_scl_pca_path + 'OBS_PCA.pkl','rb'))
 
             # Create the figure before the loop
             fig = plt.figure()
@@ -662,6 +623,11 @@ class BasePlayer(object):
                     ablate_cn_in_np[np.arange(N_ROBOTS).reshape(-1, 1), row_indices[:, :DIM_A_LSTM_CX-self.ablations_cn_in]] = torch.nan
                     ablate_cn_in = torch.tensor(ablate_cn_in_np, dtype=torch.float, device='cuda').unsqueeze(0)
 
+            neural_override = {}
+            neural_override['obs'] = None
+            neural_override['rnn_states_in'] = None
+            neural_override['rnn_states_out'] = None
+
             for t in range(self.max_steps - 1):
                 print("t:", t)
                 if has_masks:
@@ -677,11 +643,6 @@ class BasePlayer(object):
                         c_h_last = self.states[2][0,:,:] # self.layers_out['c_rnn'][1][0][0,0,:]
                         c_c_last = self.states[3][0,:,:] # self.layers_out['c_rnn'][1][1][0,0,:]
                     
-                    neural_override = {}
-                    neural_override['obs'] = None
-                    neural_override['rnn_states_in'] = None
-                    neural_override['rnn_states_out'] = None
-
                     if self.ablation_trial:
 
                         # ABLATION NEURONS AT SAME TIME AS DISTURBANCE
@@ -761,11 +722,6 @@ class BasePlayer(object):
                         # for idx in targeted_hn:
                         #     neural_state_out_override[0][:, ROBOT_ABLATION_IDX, idx] = scl_hc.mean_[idx]
 
-
-
-
-
-
                     action = self.get_action(obses, is_deterministic, neural_override) # neural_obs_override,neural_state_override
                     
                     # compute internal LSTM states - confirmed that both c1 and c2 contribute, (f != ones) does not forget everything : )
@@ -779,9 +735,9 @@ class BasePlayer(object):
                         c2 = i * g
                         c = c1 + c2
                         h = o * torch.tanh(c)
-                        tensor_dict['A_LSTM_C1X']['data'][t,:,:] = c1
-                        tensor_dict['A_LSTM_C2X']['data'][t,:,:] = c2
-
+                        if self.export_data_actor:
+                            tensor_dict['A_LSTM_C1X']['data'][t,:,:] = c1
+                            tensor_dict['A_LSTM_C2X']['data'][t,:,:] = c2
 
                         x = self.layers_out['critic_mlp']
                         i = torch.sigmoid(torch.matmul(c_w_ii, x.t()).t() + c_b_ii.repeat(self.env.num_environments, 1) + torch.matmul(c_w_hi, c_h_last.t()).t() + c_b_hi.repeat(self.env.num_environments, 1))
@@ -792,8 +748,9 @@ class BasePlayer(object):
                         c2 = i * g
                         c = c1 + c2
                         h = o * torch.tanh(c)
-                        tensor_dict['C_LSTM_C1X']['data'][t,:,:] = c1
-                        tensor_dict['C_LSTM_C2X']['data'][t,:,:] = c2
+                        if self.export_data_critic:
+                            tensor_dict['C_LSTM_C1X']['data'][t,:,:] = c1
+                            tensor_dict['C_LSTM_C2X']['data'][t,:,:] = c2
                         
                 obses, r, done, info = self.env_step(self.env, action)
 
@@ -846,39 +803,45 @@ class BasePlayer(object):
                     hc_pc = pca_hc.transform(scl_hc.transform(hc.detach().cpu().numpy()))
                     hc_pc_last = hc_pc
 
-                # if self.export_data:
+                if self.export_data:
 
-                #     condition = torch.arange(self.env.num_environments)
-                #     # condition = torch.arange(self.env.num_environments / 5).repeat(5)
-                #     time = torch.Tensor([t * self.env.dt]).repeat(self.env.num_environments)
+                    time = torch.Tensor([t * self.env.dt]).repeat(self.env.num_environments)
 
-                #     if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
-                #         tensor_dict['FT_FORCE']['data'][t,:,:] = info['foot_forces']
-                #         tensor_dict['PERTURB_BEGIN']['data'][t,:,:] = info['perturb_begin'].view(-1, 1)
-                #         tensor_dict['PERTURB']['data'][t,:,:] = info['perturb'].view(-1, 1)
-                #         tensor_dict['STANCE_BEGIN']['data'][t,:,:] = info['stance_begin'].view(-1, 1)
-                #     tensor_dict['OBS']['data'][t,:,:] = obses[:,:DIM_OBS]
-                #     tensor_dict['ACT']['data'][t,:,:] = action
-                #     tensor_dict['REWARD']['data'][t,:,:] = torch.unsqueeze(r[:], dim=1)
-                #     tensor_dict['DONE']['data'][t,:,:] = torch.unsqueeze(done[:], dim=1)
+                    if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
+                        tensor_dict['FT_FORCE']['data'][t,:,:] = info['foot_forces']
+                        tensor_dict['PERTURB_BEGIN']['data'][t,:,:] = info['perturb_begin'].view(-1, 1)
+                        tensor_dict['PERTURB']['data'][t,:,:] = info['perturb'].view(-1, 1)
+                        tensor_dict['STANCE_BEGIN']['data'][t,:,:] = info['stance_begin'].view(-1, 1)
+                    tensor_dict['OBS']['data'][t,:,:] = obses[:,:DIM_OBS]
+                    tensor_dict['ACT']['data'][t,:,:] = action
+                    tensor_dict['REWARD']['data'][t,:,:] = torch.unsqueeze(r[:], dim=1)
+                    tensor_dict['DONE']['data'][t,:,:] = torch.unsqueeze(done[:], dim=1)
 
-                #     tensor_dict['A_MLP_XX']['data'][t,:,:] = self.layers_out['actor_mlp'] # torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
-                #     tensor_dict['C_MLP_XX']['data'][t,:,:] = self.layers_out['critic_mlp'] # lstm cn (long-term memory)
+                    if self.export_data_actor:
+                        tensor_dict['A_MLP_XX']['data'][t,:,:] = self.layers_out['actor_mlp'] # torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
 
-                #     if rnn_type == 'lstm':
-                #         tensor_dict['A_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:]) # lstm hn (short-term memory)
-                #         tensor_dict['A_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:]) # lstm cn (long-term memory)
-                #         tensor_dict['A_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['A_LSTM_HX']['data'][t,:,:], tensor_dict['A_LSTM_CX']['data'][t,:,:]), dim=1)
+                    if self.export_data_critic:
+                        tensor_dict['C_MLP_XX']['data'][t,:,:] = self.layers_out['critic_mlp'] # lstm cn (long-term memory)
 
-                #         tensor_dict['C_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
-                #         tensor_dict['C_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[3][0,:,:]) # lstm cn (long-term memory)
-                #         tensor_dict['C_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['C_LSTM_HX']['data'][t,:,:], tensor_dict['C_LSTM_CX']['data'][t,:,:]), dim=1)
+                    if rnn_type == 'lstm':
+                        if self.export_data_actor:
+                            tensor_dict['A_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:]) # lstm hn (short-term memory)
+                            tensor_dict['A_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:]) # lstm cn (long-term memory)
+                            tensor_dict['A_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['A_LSTM_HX']['data'][t,:,:], tensor_dict['A_LSTM_CX']['data'][t,:,:]), dim=1)
 
-                #     elif rnn_type == 'gru':
-                #         tensor_dict['A_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:])
-                #         tensor_dict['C_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:])
-                #     else:
-                #         print("rnn model not supported")
+                        if self.export_data_critic:
+                            tensor_dict['C_LSTM_HX']['data'][t,:,:] = torch.squeeze(self.states[2][0,:,:]) # lstm hn (short-term memory)
+                            tensor_dict['C_LSTM_CX']['data'][t,:,:] = torch.squeeze(self.states[3][0,:,:]) # lstm cn (long-term memory)
+                            tensor_dict['C_LSTM_HC']['data'][t,:,:] = torch.cat((tensor_dict['C_LSTM_HX']['data'][t,:,:], tensor_dict['C_LSTM_CX']['data'][t,:,:]), dim=1)
+
+                    elif rnn_type == 'gru':
+                        if self.export_data_actor:
+                            tensor_dict['A_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[0][0,:,:])
+
+                        if self.export_data_critic:
+                            tensor_dict['C_GRU_HX']['data'][t,:,:] = torch.squeeze(self.states[1][0,:,:])
+                    else:
+                        print("rnn model not supported")
 
                 cr += r
                 steps += 1
@@ -1021,56 +984,14 @@ class BasePlayer(object):
             data_frames = [extract_tensor_data(v, t0, tf) for v in tensor_dict.values()]
             all_data = pd.concat(data_frames, axis=1)
 
-            # generate a folder to save data in
-            current_datetime = datetime.datetime.now()
-
-            # Create a folder name using the current date and time
-            date_str = current_datetime.strftime("%Y-%m-%d-%H-%M")
-
-            if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain' or self.env.cfg['name'] == 'CassieTerrain':
-                exp_str = f"_u[\
-                    {self.env.specified_command_x_range[0]},\
-                    {self.env.specified_command_x_range[1]},\
-                    {self.env.specified_command_x_no}]_v[\
-                    {self.env.specified_command_y_range[0]},\
-                    {self.env.specified_command_y_range[1]},\
-                    {self.env.specified_command_y_no}]_r[\
-                    {self.env.specified_command_yawrate_range[0]},\
-                    {self.env.specified_command_yawrate_range[1]},\
-                    {self.env.specified_command_yawrate_no}]_n[\
-                    {self.env.specified_command_no_copies}]"
-
-            if self.env.cfg['name'] == 'ShadowHand':
-                exp_str = f"_u[\
-                    {self.env.specified_command_roll_range[0]},\
-                    {self.env.specified_command_roll_range[1]},\
-                    {self.env.specified_command_roll_no}]_v[\
-                    {self.env.specified_command_pitch_range[0]},\
-                    {self.env.specified_command_pitch_range[1]},\
-                    {self.env.specified_command_pitch_no}]_r[\
-                    {self.env.specified_command_yaw_range[0]},\
-                    {self.env.specified_command_yaw_range[1]},\
-                    {self.env.specified_command_yaw_no}]"
-            
-            # Remove the spaces from the string
-            exp_str = exp_str.replace(' ', '')
-            
-            # create data folder (if it does not exist)
-            p_data = Path().resolve() / 'data'
-            p_data.mkdir(exist_ok=True)
-
-            # create specific folder
-            p =  date_str + exp_str
-            p = Path().resolve() / 'data' / p
+            # # create specific folder
+            p =  self.export_data_path
+            p = Path().resolve() / p
             p.mkdir(exist_ok=True)
 
             # Save the dataframe to a CSV file
             all_data.to_parquet(str(p / 'RAW_DATA.parquet'))
             all_data.to_csv(str(p / 'RAW_DATA.csv'))
-
-            # export the model used for data collection
-            with open(p.joinpath('model.txt'), 'w') as file:
-                file.write(self.config['name'])
 
             self.env.close_viewer()
 
