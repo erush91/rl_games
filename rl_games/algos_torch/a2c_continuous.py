@@ -143,7 +143,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 self.model.a2c_network.a_rnn.rnn.bias_ih_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
                 self.model.a2c_network.a_rnn.rnn.bias_hh_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
         if self.config['zero_action_feedback']:
-            if self.config['name'] == 'AnymalTerrain':
+            if self.config['name'] == 'AnymalTerrain' or self.config['name'] == 'A1Terrain':
                 with torch.no_grad():
                     self.model.a2c_network.actor_mlp[0].weight[:,176:] = torch.nn.Parameter(torch.zeros([512,12], dtype=torch.float, device="cuda"))
             if self.config['name'] == 'ShadowHand':

@@ -991,7 +991,7 @@ class BasePlayer(object):
 
             # Save the dataframe to a CSV file
             all_data.to_parquet(str(p / 'RAW_DATA.parquet'))
-            all_data.to_csv(str(p / 'RAW_DATA.csv'))
+            # all_data.to_csv(str(p / 'RAW_DATA.csv'))
 
             self.env.close_viewer()
 
