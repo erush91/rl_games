@@ -41,43 +41,21 @@ class PpoPlayerContinuous(BasePlayer):
         self.model.eval()
         self.is_rnn = self.model.is_rnn()
 
-    def get_action(self, obs, is_deterministic = False, override_dict=None):
+    def get_action(self, obs, is_deterministic = False):
         if self.has_batch_dimension == False:
             obs = unsqueeze_obs(obs)
         obs = self._preproc_obs(obs)
-        
-        if override_dict != None:
-            if override_dict['obs'] != None:
-                if self.has_batch_dimension == False:
-                    override_dict['obs'] = unsqueeze_obs(override_dict['obs'])
-                override_dict['obs'] = self._preproc_obs(override_dict['obs'])
         input_dict = {
-            'train': self.env.cfg['train'],
             'is_train': False,
             'prev_actions': None, 
             'obs' : obs,
             'rnn_states' : self.states
         }
         with torch.no_grad():
-            res_dict = self.model(input_dict, override_dict)
-        mu = res_dict['mus'].requires_grad_(True)
-        # action = res_dict['actions']
-        action = res_dict['actions'].requires_grad_(True)
-        # self.states = res_dict['rnn_states']
-        # self.states = tuple(tensor.clone().detach().requires_grad_(True) for tensor in res_dict['rnn_states'])
-        # Assuming res_dict['rnn_states'] is a tuple of tensors
-
-        if res_dict['rnn_states'] != None:
-            rnn_states_list = list(res_dict['rnn_states'])  # Convert tuple to list
-
-            # Iterate over the list and set requires_grad to True for each tensor
-            for i in range(len(rnn_states_list)):
-                if isinstance(rnn_states_list[i], torch.Tensor):  # Check if the item is a tensor
-                    rnn_states_list[i].requires_grad_()  # Set requires_grad to True in-place
-
-            # Convert the list back to a tuple and assign it to self.states
-            self.states = tuple(rnn_states_list)
-
+            res_dict = self.model(input_dict)
+        mu = res_dict['mus']
+        action = res_dict['actions']
+        self.states = res_dict['rnn_states']
         self.layers_out = res_dict['layers_out']
         if is_deterministic:
             current_action = mu

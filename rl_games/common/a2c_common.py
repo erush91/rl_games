@@ -383,7 +383,7 @@ class A2CBase(BaseAlgorithm):
         }
 
         with torch.no_grad():
-            res_dict = self.model(input_dict, None)
+            res_dict = self.model(input_dict)
             if self.has_central_value:
                 states = obs['states']
                 input_dict = {
@@ -416,7 +416,7 @@ class A2CBase(BaseAlgorithm):
                     'obs' : processed_obs,
                     'rnn_states' : self.rnn_states
                 }
-                result = self.model(input_dict, None)
+                result = self.model(input_dict)
                 value = result['values']
             return value
 

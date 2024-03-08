@@ -349,10 +349,10 @@ class AverageMeter(nn.Module):
 
 
 class IdentityRNN(nn.Module):
-    def __init__(self, in_shape, out_shape, bias):
+    def __init__(self, in_shape, out_shape):
         super(IdentityRNN, self).__init__()
         assert(in_shape == out_shape)
-        self.identity = torch.nn.Identity(bias=bias)
+        self.identity = torch.nn.Identity()
 
     def forward(self, x, h):
         return self.identity(x), h

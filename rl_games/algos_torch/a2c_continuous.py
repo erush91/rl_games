@@ -107,7 +107,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 batch_dict['dones'] = input_dict['dones']            
 
         with torch.cuda.amp.autocast(enabled=self.mixed_precision):
-            res_dict = self.model(batch_dict, None)
+            res_dict = self.model(batch_dict)
             action_log_probs = res_dict['prev_neglogp']
             values = res_dict['values']
             entropy = res_dict['entropy']
@@ -137,18 +137,12 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 for param in self.model.parameters():
                     param.grad = None
 
-        # GENE: Zero out the weights so that actions from the obs_buf don't feed into the actor_mlp + a_rnn (remove that input, inspired from Saxena's paper)
-        if self.config['zero_bias_actor_rnn']:
-            with torch.no_grad():
-                self.model.a2c_network.a_rnn.rnn.bias_ih_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
-                self.model.a2c_network.a_rnn.rnn.bias_hh_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
-        if self.config['zero_action_feedback']:
-            if self.config['name'] == 'AnymalTerrain' or self.config['name'] == 'A1Terrain':
-                with torch.no_grad():
-                    self.model.a2c_network.actor_mlp[0].weight[:,176:] = torch.nn.Parameter(torch.zeros([512,12], dtype=torch.float, device="cuda"))
-            if self.config['name'] == 'ShadowHand':
-                with torch.no_grad():
-                    self.model.a2c_network.actor_mlp[0].weight[:,22:] = torch.nn.Parameter(torch.zeros([512,20], dtype=torch.float, device="cuda"))
+        # Zero out the weights so that actions from the obs_buf don't feed into the actor_mlp+a_rnn (remove that input, inspired from Saxena's paper) TODO: move to a better place and add a parameter that controls this.
+        with torch.no_grad():
+            self.model.a2c_network.a_rnn.rnn.bias_ih_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda")) # Anymal
+            self.model.a2c_network.a_rnn.rnn.bias_hh_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda")) # Anymal
+            self.model.a2c_network.actor_mlp[0].weight[:,176:] = torch.nn.Parameter(torch.zeros([512,12], dtype=torch.float, device="cuda")) # Anymal
+            # self.model.a2c_network.actor_mlp[0].weight[:,22:] = torch.nn.Parameter(torch.zeros([512,20], dtype=torch.float, device="cuda")) # ShadowHand
 
         self.scaler.scale(loss).backward()
         #TODO: Refactor this ugliest code of they year

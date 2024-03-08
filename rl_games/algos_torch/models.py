@@ -240,14 +240,11 @@ class ModelA2CContinuousLogStd(BaseModel):
         def get_default_rnn_state(self):
             return self.a2c_network.get_default_rnn_state()
 
-        def forward(self, input_dict, override_dict):
+        def forward(self, input_dict):
             is_train = input_dict.get('is_train', True)
             prev_actions = input_dict.get('prev_actions', None)
             input_dict['obs'] = self.norm_obs(input_dict['obs'])
-            if override_dict != None:
-                if override_dict['obs'] != None:
-                    override_dict['obs'] = self.norm_obs(override_dict['obs'])
-            mu, logstd, value, states, layer_out = self.a2c_network(input_dict, override_dict)
+            mu, logstd, value, states, layer_out = self.a2c_network(input_dict)
             sigma = torch.exp(logstd)
             distr = torch.distributions.Normal(mu, sigma, validate_args=False)
             if is_train:
