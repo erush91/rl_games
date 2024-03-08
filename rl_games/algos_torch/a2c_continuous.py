@@ -141,6 +141,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         if self.config['zero_bias_actor_rnn']:
             with torch.no_grad():
                 self.model.a2c_network.a_rnn.rnn.bias_ih_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
+                self.model.a2c_network.a_rnn.rnn.bias_hh_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
         if self.config['zero_action_feedback']:
             if self.config['name'] == 'AnymalTerrain':
                 with torch.no_grad():

@@ -76,13 +76,13 @@ class NetworkBuilder:
         def _noisy_dense(self, inputs, units):
             return layers.NoisyFactorizedLinear(inputs, units)
 
-        def _build_rnn(self, name, input, units, layers):
+        def _build_rnn(self, name, input, units, layers, bias=True):
             if name == 'identity':
-                return torch_ext.IdentityRNN(input, units)
+                return torch_ext.IdentityRNN(input, units, bias=bias)
             if name == 'lstm':
-                return LSTMWithDones(input_size=input, hidden_size=units, num_layers=layers)
+                return LSTMWithDones(input_size=input, hidden_size=units, num_layers=layers, bias=bias)
             if name == 'gru':
-                return GRUWithDones(input_size=input, hidden_size=units, num_layers=layers)
+                return GRUWithDones(input_size=input, hidden_size=units, num_layers=layers, bias=bias)
 
         def _build_sequential_mlp(self, 
         input_size, 
