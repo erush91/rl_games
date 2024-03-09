@@ -301,149 +301,444 @@ class A2CBuilder(NetworkBuilder):
                 self.selected_out[layer_name] = output
             return hook
 
-        def forward(self, obs_dict):
-            obs = obs_dict['obs']
-            states = obs_dict.get('rnn_states', None)
-            seq_length = obs_dict.get('seq_length', 1)
-            dones = obs_dict.get('dones', None)
-            bptt_len = obs_dict.get('bptt_len', 0)
-            if self.has_cnn:
-                # for obs shape 4
-                # input expected shape (B, W, H, C)
-                # convert to (B, C, W, H)
-                if self.permute_input and len(obs.shape) == 4:
-                    obs = obs.permute((0, 3, 1, 2))
+        def forward(self, obs_dict, override_dict):
+            
+            if obs_dict['train']:
+                    
+                obs = obs_dict['obs']
+                states = obs_dict.get('rnn_states', None)
+                seq_length = obs_dict.get('seq_length', 1)
+                dones = obs_dict.get('dones', None)
+                bptt_len = obs_dict.get('bptt_len', 0)
+                if self.has_cnn:
+                    # for obs shape 4
+                    # input expected shape (B, W, H, C)
+                    # convert to (B, C, W, H)
+                    if self.permute_input and len(obs.shape) == 4:
+                        obs = obs.permute((0, 3, 1, 2))
 
-            if self.separate:
-                a_out = c_out = obs
-                a_out = self.actor_cnn(a_out)
-                a_out = a_out.contiguous().view(a_out.size(0), -1)
+                if self.separate:
+                    a_out = c_out = obs
+                    a_out = self.actor_cnn(a_out)
+                    a_out = a_out.contiguous().view(a_out.size(0), -1)
 
-                c_out = self.critic_cnn(c_out)
-                c_out = c_out.contiguous().view(c_out.size(0), -1)                    
+                    c_out = self.critic_cnn(c_out)
+                    c_out = c_out.contiguous().view(c_out.size(0), -1)                    
 
-                if self.has_rnn:
-                    if not self.is_rnn_before_mlp:
-                        a_out_in = a_out
-                        c_out_in = c_out
-                        a_out = self.actor_mlp(a_out_in)
-                        c_out = self.critic_mlp(c_out_in)
+                    if self.has_rnn:
+                        if not self.is_rnn_before_mlp:
+                            a_out_in = a_out
+                            c_out_in = c_out
+                            a_out = self.actor_mlp(a_out_in)
+                            c_out = self.critic_mlp(c_out_in)
 
-                        if self.rnn_concat_input:
-                            a_out = torch.cat([a_out, a_out_in], dim=1)
-                            c_out = torch.cat([c_out, c_out_in], dim=1)
+                            if self.rnn_concat_input:
+                                a_out = torch.cat([a_out, a_out_in], dim=1)
+                                c_out = torch.cat([c_out, c_out_in], dim=1)
 
-                    batch_size = a_out.size()[0]
-                    num_seqs = batch_size // seq_length
-                    a_out = a_out.reshape(num_seqs, seq_length, -1)
-                    c_out = c_out.reshape(num_seqs, seq_length, -1)
+                        batch_size = a_out.size()[0]
+                        num_seqs = batch_size // seq_length
+                        a_out = a_out.reshape(num_seqs, seq_length, -1)
+                        c_out = c_out.reshape(num_seqs, seq_length, -1)
 
-                    a_out = a_out.transpose(0,1)
-                    c_out = c_out.transpose(0,1)
-                    if dones is not None:
-                        dones = dones.reshape(num_seqs, seq_length, -1)
-                        dones = dones.transpose(0,1)
+                        a_out = a_out.transpose(0,1)
+                        c_out = c_out.transpose(0,1)
+                        if dones is not None:
+                            dones = dones.reshape(num_seqs, seq_length, -1)
+                            dones = dones.transpose(0,1)
 
-                    if len(states) == 2:
-                        a_states = states[0]
-                        c_states = states[1]
+                        if len(states) == 2:
+                            a_states = states[0]
+                            c_states = states[1]
+                        else:
+                            a_states = states[:2]
+                            c_states = states[2:]                        
+                        a_out, a_states = self.a_rnn(a_out, a_states, dones, bptt_len)
+                        c_out, c_states = self.c_rnn(c_out, c_states, dones, bptt_len)
+
+                        a_out = a_out.transpose(0,1)
+                        c_out = c_out.transpose(0,1)
+                        a_out = a_out.contiguous().reshape(a_out.size()[0] * a_out.size()[1], -1)
+                        c_out = c_out.contiguous().reshape(c_out.size()[0] * c_out.size()[1], -1)
+                        if self.rnn_ln:
+                            a_out = self.a_layer_norm(a_out)
+                            c_out = self.c_layer_norm(c_out)
+                        if type(a_states) is not tuple:
+                            a_states = (a_states,)
+                            c_states = (c_states,)
+                        states = a_states + c_states
+
+                        if self.is_rnn_before_mlp:
+                            a_out = self.actor_mlp(a_out)
+                            c_out = self.critic_mlp(c_out)
                     else:
-                        a_states = states[:2]
-                        c_states = states[2:]                        
-                    a_out, a_states = self.a_rnn(a_out, a_states, dones, bptt_len)
-                    c_out, c_states = self.c_rnn(c_out, c_states, dones, bptt_len)
-
-                    a_out = a_out.transpose(0,1)
-                    c_out = c_out.transpose(0,1)
-                    a_out = a_out.contiguous().reshape(a_out.size()[0] * a_out.size()[1], -1)
-                    c_out = c_out.contiguous().reshape(c_out.size()[0] * c_out.size()[1], -1)
-                    if self.rnn_ln:
-                        a_out = self.a_layer_norm(a_out)
-                        c_out = self.c_layer_norm(c_out)
-                    if type(a_states) is not tuple:
-                        a_states = (a_states,)
-                        c_states = (c_states,)
-                    states = a_states + c_states
-
-                    if self.is_rnn_before_mlp:
                         a_out = self.actor_mlp(a_out)
                         c_out = self.critic_mlp(c_out)
+                                
+                    value = self.value_act(self.value(c_out))
+
+                    if self.is_discrete:
+                        logits = self.logits(a_out)
+                        return logits, value, states, self.selected_out
+
+                    if self.is_multi_discrete:
+                        logits = [logit(a_out) for logit in self.logits]
+                        return logits, value, states, self.selected_out
+
+                    if self.is_continuous:
+                        mu = self.mu_act(self.mu(a_out))
+                        if self.fixed_sigma:
+                            sigma = mu * 0.0 + self.sigma_act(self.sigma)
+                        else:
+                            sigma = self.sigma_act(self.sigma(a_out))
+
+                        return mu, sigma, value, states, self.selected_out
+
                 else:
-                    a_out = self.actor_mlp(a_out)
-                    c_out = self.critic_mlp(c_out)
-                            
-                value = self.value_act(self.value(c_out))
+                    out = obs
+                    out = self.actor_cnn(out)
+                    out = out.flatten(1)                
 
-                if self.is_discrete:
-                    logits = self.logits(a_out)
-                    return logits, value, states, self.selected_out
-
-                if self.is_multi_discrete:
-                    logits = [logit(a_out) for logit in self.logits]
-                    return logits, value, states, self.selected_out
-
-                if self.is_continuous:
-                    mu = self.mu_act(self.mu(a_out))
-                    if self.fixed_sigma:
-                        sigma = mu * 0.0 + self.sigma_act(self.sigma)
-                    else:
-                        sigma = self.sigma_act(self.sigma(a_out))
-
-                    return mu, sigma, value, states, self.selected_out
-            else:
-                out = obs
-                out = self.actor_cnn(out)
-                out = out.flatten(1)                
-
-                if self.has_rnn:
-                    out_in = out
-                    if not self.is_rnn_before_mlp:
+                    if self.has_rnn:
                         out_in = out
-                        out = self.actor_mlp(out)
-                        if self.rnn_concat_input:
-                            out = torch.cat([out, out_in], dim=1)
+                        if not self.is_rnn_before_mlp:
+                            out_in = out
+                            out = self.actor_mlp(out)
+                            if self.rnn_concat_input:
+                                out = torch.cat([out, out_in], dim=1)
 
-                    batch_size = out.size()[0]
-                    num_seqs = batch_size // seq_length
-                    out = out.reshape(num_seqs, seq_length, -1)
+                        batch_size = out.size()[0]
+                        num_seqs = batch_size // seq_length
+                        out = out.reshape(num_seqs, seq_length, -1)
 
-                    if len(states) == 1:
-                        states = states[0]
+                        if len(states) == 1:
+                            states = states[0]
 
-                    out = out.transpose(0, 1)
-                    if dones is not None:
-                        dones = dones.reshape(num_seqs, seq_length, -1)
-                        dones = dones.transpose(0, 1)
-                    out, states = self.rnn(out, states, dones, bptt_len)
-                    out = out.transpose(0, 1)
-                    out = out.contiguous().reshape(out.size()[0] * out.size()[1], -1)
+                        out = out.transpose(0, 1)
+                        if dones is not None:
+                            dones = dones.reshape(num_seqs, seq_length, -1)
+                            dones = dones.transpose(0, 1)
+                        out, states = self.rnn(out, states, dones, bptt_len)
+                        out = out.transpose(0, 1)
+                        out = out.contiguous().reshape(out.size()[0] * out.size()[1], -1)
 
-                    if self.rnn_ln:
-                        out = self.layer_norm(out)
-                    if self.is_rnn_before_mlp:
-                        out = self.actor_mlp(out)
-                    if type(states) is not tuple:
-                        states = (states,)
-                else:
-                    out = self.actor_mlp(out)
-                value = self.value_act(self.value(out))
-
-                if self.central_value:
-                    return value, states, self.selected_out
-
-                if self.is_discrete:
-                    logits = self.logits(out)
-                    return logits, value, states, self.selected_out
-                if self.is_multi_discrete:
-                    logits = [logit(out) for logit in self.logits]
-                    return logits, value, states, self.selected_out
-                if self.is_continuous:
-                    mu = self.mu_act(self.mu(out))
-                    if self.fixed_sigma:
-                        sigma = self.sigma_act(self.sigma)
+                        if self.rnn_ln:
+                            out = self.layer_norm(out)
+                        if self.is_rnn_before_mlp:
+                            out = self.actor_mlp(out)
+                        if type(states) is not tuple:
+                            states = (states,)
                     else:
-                        sigma = self.sigma_act(self.sigma(out))
-                    return mu, mu*0 + sigma, value, states, self.selected_out
+                        out = self.actor_mlp(out)
+                    value = self.value_act(self.value(out))
+
+                    if self.central_value:
+                        return value, states, self.selected_out
+
+                    if self.is_discrete:
+                        logits = self.logits(out)
+                        return logits, value, states, self.selected_out
+                    if self.is_multi_discrete:
+                        logits = [logit(out) for logit in self.logits]
+                        return logits, value, states, self.selected_out
+                    if self.is_continuous:
+                        mu = self.mu_act(self.mu(out))
+                        if self.fixed_sigma:
+                            sigma = self.sigma_act(self.sigma)
+                        else:
+                            sigma = self.sigma_act(self.sigma(out))
+                        return mu, mu*0 + sigma, value, states, self.selected_out
+
+            else:
+
+                with torch.enable_grad():
+                    
+                    obs = obs_dict['obs']
+                    states = obs_dict.get('rnn_states', None)
+                    seq_length = obs_dict.get('seq_length', 1)
+                    dones = obs_dict.get('dones', None)
+                    bptt_len = obs_dict.get('bptt_len', 0)
+
+                    ####### GENE: Added code #######
+                    if override_dict != None:
+                        override_obs = override_dict['obs']
+                        override_states_in = override_dict['rnn_states_in']
+                        override_states_out = override_dict['rnn_states_out']
+                    else:
+                        override_obs = None
+                        override_states_in = None
+                        override_states_out = None
+
+                    override_flag = False
+                    if override_obs != None or override_states_in != None or override_states_out != None:
+                        override_flag = True
+
+                    ####### GENE: Added code #######
+                    # OVERRIDE OBS (SENSORY) STATE INPUT TO RNN?
+                    if override_obs != None:
+                        obs_mask = ~override_obs.isnan()
+                        obs[obs_mask] = override_obs[obs_mask]
+
+                    ####### GENE: Added code #######
+                    # OVERRIDE RNN NEURAL STATE INPUT TO RNN?
+                    if override_states_in != None:
+                        hn_in_mask = ~override_states_in[0].isnan()
+                        cn_in_mask = ~override_states_in[1].isnan()
+                        states[0][hn_in_mask] = override_states_in[0][hn_in_mask]
+                        states[1][cn_in_mask] = override_states_in[1][cn_in_mask]
+
+                    if self.has_cnn:
+                        # for obs shape 4
+                        # input expected shape (B, W, H, C)
+                        # convert to (B, C, W, H)
+                        if self.permute_input and len(obs.shape) == 4:
+                            obs = obs.permute((0, 3, 1, 2))
+
+                    if self.separate:
+
+                        a_out1 = c_out1 = obs
+                        
+                        # DO THIS OUTSIDE HERE, IN PLAYER, B/C THESE VALUES ARE ALREADY NORMALIZED :(
+                        # a_out1[:,0] = 0 # u 4% (so many fell over b/c walking to fast)
+                        # a_out1[:,1] = 0 # v 39%
+                        # a_out1[:,2] = 0 # w 95%
+                        # a_out1[:,3] = 0 # p (roll rate) 82%
+                        # a_out1[:,4] = 0 # q (pitch rate) 97%
+                        # a_out1[:,5] = 0 # r (raw rate) 99% (yaws too much, would be fixed by timing the perturbation)
+                        # a_out1[:,6] = 0 # cos(pitch) 100%
+                        # a_out1[:,7] = 0 # cos(roll) 27%
+                        # a_out1[:,8] = 0 # cos(yaw) 100%
+                        # a_out1[:,9] = 0 # u* 93%
+                        # a_out1[:,10] = 0 # v* 100%
+                        # a_out1[:,11] = 0 # w* 100%
+                        # a_out1[:,12:24] = 0 # dof pos 0% (walks a bit funny)
+                        # a_out1[:,24:36] = 0 # dof vel 33% (hard time standing up)
+                        # a_out1[:,36:176] = 0 # depths 95% (yaws too much, would be fixed by timing the perturbation)
+                        # a_out1[:,176:] = 0 # torques 100%
+
+                        if not override_flag:
+                            a_out1.requires_grad = True
+
+                        a_out2 = self.actor_cnn(a_out1)
+                        a_out3 = a_out2.contiguous().view(a_out2.size(0), -1)
+
+                        c_out2 = self.critic_cnn(c_out1)
+                        c_out3 = c_out2.contiguous().view(c_out2.size(0), -1)                    
+
+                        if self.has_rnn:
+                            if not self.is_rnn_before_mlp:
+                                a_out_in = a_out3.clone()
+                                c_out_in = c_out3.clone()
+                                a_out_temp1 = self.actor_mlp(a_out_in)
+                                c_out_temp1 = self.critic_mlp(c_out_in)
+
+                                if self.rnn_concat_input:
+                                    a_out_temp1 = torch.cat([a_out_temp1, a_out_in], dim=1)
+                                    c_out_temp1 = torch.cat([c_out_temp1, c_out_in], dim=1)
+
+                            batch_size = a_out_in.size()[0]
+                            num_seqs = batch_size // seq_length
+                            a_out_temp2 = a_out_temp1.reshape(num_seqs, seq_length, -1)
+                            c_out_temp2 = c_out_temp1.reshape(num_seqs, seq_length, -1)
+
+                            a_out_temp3 = a_out_temp2.transpose(0,1)
+                            c_out_temp3 = c_out_temp2.transpose(0,1)
+                            if dones is not None:
+                                dones = dones.reshape(num_seqs, seq_length, -1)
+                                dones = dones.transpose(0,1)
+
+
+                            # PASS IN NEURAL_OVERRIDE TO FORWARD FUNCTION IN ORDER TO USE SCL_MEAN
+                            # states[0][0,:,:] = 0
+                            # states[1][0,:,:] = 0
+
+                            # states[0][0,:,13] = 0.205488821246418
+                            # # # states[0,:,47] = 0.5477552639
+                            # # # states[0,:,48] = 0.000139220706739
+                            # states[0][0,:,56] = 0.22776731317200002
+                            # # states[0,:,68] = 0.0774490174969702
+                            # # # states[0,:,98] = -0.06649116412530204
+                            # states[0][0,:,101] = 0.59731554871306
+                            # # # states[0,:,103] = 0.760765491346
+                            # states[0][0,:,108] = -0.199395715246838
+                            # # # states[0,:,114] = 0.0377013023041424
+
+                            if len(states) == 2:
+                                a_states = states[0]
+                                c_states = states[1]
+                            else:
+                                a_states = states[:2]
+                                c_states = states[2:]
+
+                            # Clone and detach, then set requires_grad
+                            if len(states) == 2:
+                                a_states = states[0].clone().detach() .requires_grad_(True)
+                                c_states = states[1].clone().detach().requires_grad_(True)
+                            else:
+                                a_states = tuple(tensor.clone().detach().requires_grad_(True) for tensor in states[:2])
+                                c_states = tuple(tensor.clone().detach().requires_grad_(True) for tensor in states[2:])
+                            
+
+                            a_out_temp4, a_states_out = self.a_rnn(a_out_temp3, a_states, dones, bptt_len)
+                            c_out_temp4, c_states_out = self.c_rnn(c_out_temp3, c_states, dones, bptt_len)
+
+                            ####### GENE: Added code #######
+                            # OVERRIDE RNN NEURAL STATE OUTPUT FROM RNN?
+                            if override_states_out != None:
+                                hn_out_mask = ~override_states_out[0].isnan()
+                                cn_out_mask = ~override_states_out[1].isnan()
+                                a_out_temp4[hn_out_mask] = override_states_out[0][hn_out_mask]
+
+                            # a_out_temp4[0,:,13] = 0.205488821246418
+                            # # # a_out_temp4[0,:,47] = 0.5477552639
+                            # # # a_out_temp4[0,:,48] = 0.000139220706739
+                            # a_out_temp4[0,:,56] = 0.22776731317200002
+                            # # a_out_temp4[0,:,68] = 0.0774490174969702
+                            # # # a_out_temp4[0,:,98] = -0.06649116412530204
+                            # a_out_temp4[0,:,101] = 0.59731554871306
+                            # # # a_out_temp4[0,:,103] = 0.760765491346
+                            # a_out_temp4[0,:,108] = -0.199395715246838
+                            # # # a_out_temp4[0,:,114] = 0.0377013023041424
+
+                            a_out_temp4.retain_grad()
+                            a_out_temp5 = a_out_temp4.transpose(0,1)
+                            c_out_temp5 = c_out_temp4.transpose(0,1)
+                            a_out = a_out_temp5.contiguous().reshape(a_out_temp5.size()[0] * a_out_temp5.size()[1], -1)
+                            c_out = c_out_temp5.contiguous().reshape(c_out_temp5.size()[0] * c_out_temp5.size()[1], -1)
+                            if self.rnn_ln:
+                                a_out_temp = self.a_layer_norm(a_out)
+                                c_out_temp = self.c_layer_norm(c_out)
+                            if type(a_states_out) is not tuple:
+                                a_states_out = (a_states_out,)
+                                c_states_out = (c_states_out,)
+                            states_out = a_states_out + c_states_out
+
+                            if self.is_rnn_before_mlp:
+                                a_out_temp = self.actor_mlp(a_out)
+                                c_out_temp = self.critic_mlp(c_out)
+                        else:
+                            a_out = self.actor_mlp(a_out3)
+                            c_out = self.critic_mlp(c_out3)
+                            states_out = None
+                                    
+                        value = self.value_act(self.value(c_out))
+
+                        if self.is_discrete:
+                            logits = self.logits(a_out)
+                            return logits, value, states_out, self.selected_out
+
+                        if self.is_multi_discrete:
+                            logits = [logit(a_out) for logit in self.logits]
+                            return logits, value, states_out, self.selected_out
+
+                        if self.is_continuous:
+                            mu = self.mu_act(self.mu(a_out))
+                            if self.fixed_sigma:
+                                sigma = mu * 0.0 + self.sigma_act(self.sigma)
+                            else:
+                                sigma = self.sigma_act(self.sigma(a_out))
+
+                            # if not override_flag:
+
+                                ### del(actions)/del(cx_specific)
+                                # mu.backward(torch.ones_like(mu))
+
+                                ### del(action_RHhip)/del(obs,hc_in,hc_out)
+                                mu[:,9].backward(torch.ones_like(mu[:,9]))
+
+                                # obs
+                                with open('/home/gene/Pictures/h_obs.csv', "a") as file:
+                                    # Append the NumPy array as a new row in the CSV file
+                                    np.savetxt(file, a_out1.detach().cpu().numpy(), delimiter=',', fmt='%f')
+                                with open('/home/gene/Pictures/h_obs_grad.csv', "a") as file:
+                                    # Append the NumPy array as a new row in the CSV file
+                                    np.savetxt(file, a_out1.grad.detach().cpu().numpy(), delimiter=',', fmt='%f')
+
+                                # hn_in
+                                with open('/home/gene/Pictures/hn_in.csv', "a") as file:
+                                    # Append the NumPy array as a new row in the CSV file
+                                    np.savetxt(file, a_states[0][0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
+                                with open('/home/gene/Pictures/hn_in_grad.csv', "a") as file:
+                                    # Append the NumPy array as a new row in the CSV file
+                                    np.savetxt(file, a_states[0].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+
+                                # cn_in
+                                with open('/home/gene/Pictures/cn_in.csv', "a") as file:
+                                    # Append the NumPy array as a new row in the CSV file
+                                    np.savetxt(file, a_states[1][0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
+                                with open('/home/gene/Pictures/cn_in_grad.csv', "a") as file:
+                                    # Append the NumPy array as a new row in the CSV file
+                                    np.savetxt(file, a_states[1].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+
+                                # hc_out
+                                with open('/home/gene/Pictures/hc_out.csv', "a") as file:
+                                    # Append the NumPy array as a new row in the CSV file
+                                    np.savetxt(file, a_out_temp4[0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
+                                with open('/home/gene/Pictures/hc_out_grad.csv', "a") as file:
+                                    # Append the NumPy array as a new row in the CSV file
+                                    np.savetxt(file, a_out_temp4.grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+
+                                a_out1.grad.zero_()
+                                a_states[0].grad.zero_()
+                                a_states[1].grad.zero_()
+                                a_out_temp4.grad.zero_()
+                            return mu, sigma, value, states_out, self.selected_out
+
+                    else:
+                        out = obs
+                        out = self.actor_cnn(out)
+                        out = out.flatten(1)                
+
+                        if self.has_rnn:
+                            out_in = out
+                            if not self.is_rnn_before_mlp:
+                                out_in = out
+                                out = self.actor_mlp(out)
+                                if self.rnn_concat_input:
+                                    out = torch.cat([out, out_in], dim=1)
+
+                            batch_size = out.size()[0]
+                            num_seqs = batch_size // seq_length
+                            out = out.reshape(num_seqs, seq_length, -1)
+
+                            if len(states) == 1:
+                                states = states[0]
+
+                            out = out.transpose(0, 1)
+                            if dones is not None:
+                                dones = dones.reshape(num_seqs, seq_length, -1)
+                                dones = dones.transpose(0, 1)
+                            out, states = self.rnn(out, states, dones, bptt_len)
+                            out = out.transpose(0, 1)
+                            out = out.contiguous().reshape(out.size()[0] * out.size()[1], -1)
+
+                            if self.rnn_ln:
+                                out = self.layer_norm(out)
+                            if self.is_rnn_before_mlp:
+                                out = self.actor_mlp(out)
+                            if type(states) is not tuple:
+                                states = (states,)
+                        else:
+                            out = self.actor_mlp(out)
+                        value = self.value_act(self.value(out))
+
+                        if self.central_value:
+                            return value, states, self.selected_out
+
+                        if self.is_discrete:
+                            logits = self.logits(out)
+                            return logits, value, states, self.selected_out
+                        if self.is_multi_discrete:
+                            logits = [logit(out) for logit in self.logits]
+                            return logits, value, states, self.selected_out
+                        if self.is_continuous:
+                            mu = self.mu_act(self.mu(out))
+                            if self.fixed_sigma:
+                                sigma = self.sigma_act(self.sigma)
+                            else:
+                                sigma = self.sigma_act(self.sigma(out))
+                            return mu, mu*0 + sigma, value, states, self.selected_out
+
                     
         def is_separate_critic(self):
             return self.separate
