@@ -138,10 +138,11 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                     param.grad = None
 
         # GENE: Zero out the weights so that actions from the obs_buf don't feed into the actor_mlp + a_rnn (remove that input, inspired from Saxena's paper)
-        if self.config['zero_bias_actor_rnn']:
-            with torch.no_grad():
-                self.model.a2c_network.a_rnn.rnn.bias_ih_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
-                self.model.a2c_network.a_rnn.rnn.bias_hh_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
+        if self.config['zero_arnn_bias_ih_l0']:
+                with torch.no_grad():
+                    self.model.a2c_network.a_rnn.rnn.bias_ih_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
+        if self.config['zero_arnn_bias_hh_l0']:
+                    self.model.a2c_network.a_rnn.rnn.bias_hh_l0 = torch.nn.Parameter(torch.zeros([512], dtype=torch.float, device="cuda"))
         if self.config['zero_action_feedback']:
             if self.config['name'] == 'AnymalTerrain' or self.config['name'] == 'A1Terrain':
                 with torch.no_grad():

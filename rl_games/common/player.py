@@ -97,6 +97,7 @@ class BasePlayer(object):
 
         self.device = torch.device(self.device_name)
 
+        self.perturbationY = self.env.cfg['env']['evaluate']['perturbPrescribed'].get('forceY', 0)
         self.random_ablation_trial = self.env.cfg['env']['ablate'].get('random_trial', False)
         self.targeted_ablation_trial = self.env.cfg['env']['ablate'].get('targeted_trial', False)
         self.wait_until_disturbance = self.env.cfg['env']['ablate'].get('wait_until_disturbance', False)
@@ -1004,6 +1005,17 @@ class BasePlayer(object):
         t0 = 0 # 1000 # 500 # 9500 # 950 # 100 # 500
         tf = 500 # 3000 # 1500 # 1500 # 10000 # 1000 # 600 # 527
 
+        # create specific folder
+        p =  self.export_data_path
+        p = Path().resolve() / p
+        p.mkdir(exist_ok=True)
+    
+        if self.perturbationY > 0:
+            # Save the dataframe to a CSV file)
+            pd.DataFrame([self.env.num_environments]).to_csv(p / 'trials.csv')
+            pd.DataFrame([games_won]).to_csv(p / 'recoveries.csv')
+            print('EXPORTED / games lost:', games_won, '    / games won:', self.env.num_environments - games_won)
+    
         if self.export_data:
             
             def extract_tensor_data(tensor_dict_entry: dict, t0: int, tf: int) -> pd.DataFrame:
@@ -1017,15 +1029,6 @@ class BasePlayer(object):
             data_frames = [extract_tensor_data(v, t0, tf) for v in tensor_dict.values()]
             all_data = pd.concat(data_frames, axis=1)
 
-            # # create specific folder
-            p =  self.export_data_path
-            p = Path().resolve() / p
-            p.mkdir(exist_ok=True)
-
-            # Save the dataframe to a CSV file)
-            pd.DataFrame([self.env.num_environments]).to_csv(p / 'trials.csv')
-            pd.DataFrame([games_won]).to_csv(p / 'recoveries.csv')
-            print('games lost:', games_won, '    games won:', self.env.num_environments - games_won)
             all_data.to_parquet(str(p / 'RAW_DATA.parquet'))
             # all_data.to_csv(str(p / 'RAW_DATA.csv'))
 
