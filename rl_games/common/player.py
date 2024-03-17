@@ -88,12 +88,9 @@ class BasePlayer(object):
         self.export_data_actor = self.env.cfg['env'].get('export_data_actor', False)
         self.export_data_critic = self.env.cfg['env'].get('export_data_critic', False)
         self.live_plot = self.env.cfg['env'].get('live_plot', False)
-        self.print_stats = self.player_config.get('print_stats', True)
+        self.print_stats = self.player_config.get('print_stats', False)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
-        if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain'or self.env.cfg['name'] == 'CassieTerrain':
-            self.max_steps = 501 # 3001 # 1501 # 10001 # 1001 # 108000 // 4
-        if self.env.cfg['name'] == 'ShadowHand':
-            self.max_steps = 501
+        self.max_steps = round(self.env.max_episode_length_s/self.env.dt)
 
         self.device = torch.device(self.device_name)
 
@@ -663,7 +660,6 @@ class BasePlayer(object):
                     ablate_cn_in = torch.tensor(ablate_cn_in_np, dtype=torch.float, device='cuda').unsqueeze(0)
 
             for t in range(self.max_steps - 1):
-                print("t:", t)
                 if has_masks:
                     masks = self.env.get_action_mask()
                     action = self.get_masked_action(
@@ -887,9 +883,20 @@ class BasePlayer(object):
                 done_indices = all_done_indices[::self.num_agents]
                 robots_recovered[done_indices] = 0
                 done_count = len(done_indices)
-                if t < self.max_steps:
-                    games_won += done_count
-                    print('games lost:', games_won, '    games won:', self.env.num_environments - games_won)
+                games_won += done_count
+                print('time step:', t, ' / failed:', games_won, ' / recovered:', self.env.num_environments - games_won)
+
+                # create folder to export recovery data
+                p =  self.export_data_path
+                p = Path().resolve() / p
+                p.mkdir(exist_ok=True)
+            
+                if (t < self.max_steps - 2):
+                    if abs(self.perturbationY) > 0:
+                        # Save the dataframe to a CSV file)
+                        pd.DataFrame([self.env.num_environments]).to_csv(p / 'trials.csv')
+                        pd.DataFrame([max(self.env.num_environments - games_won, 0)]).to_csv(p / 'recoveries.csv')
+                
                 if done_count > 0:
                     if self.is_rnn:
                         for s in self.states:
@@ -1005,17 +1012,6 @@ class BasePlayer(object):
         t0 = 0 # 1000 # 500 # 9500 # 950 # 100 # 500
         tf = 500 # 3000 # 1500 # 1500 # 10000 # 1000 # 600 # 527
 
-        # create specific folder
-        p =  self.export_data_path
-        p = Path().resolve() / p
-        p.mkdir(exist_ok=True)
-    
-        if self.perturbationY > 0:
-            # Save the dataframe to a CSV file)
-            pd.DataFrame([self.env.num_environments]).to_csv(p / 'trials.csv')
-            pd.DataFrame([games_won]).to_csv(p / 'recoveries.csv')
-            print('EXPORTED / games lost:', games_won, '    / games won:', self.env.num_environments - games_won)
-    
         if self.export_data:
             
             def extract_tensor_data(tensor_dict_entry: dict, t0: int, tf: int) -> pd.DataFrame:
