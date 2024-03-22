@@ -52,6 +52,7 @@ class PpoPlayerContinuous(BasePlayer):
                     override_dict['obs'] = unsqueeze_obs(override_dict['obs'])
                 override_dict['obs'] = self._preproc_obs(override_dict['obs'])
         input_dict = {
+            'export_path': self.export_data_path,
             'train': self.env.cfg['train'],
             'is_train': False,
             'prev_actions': None, 

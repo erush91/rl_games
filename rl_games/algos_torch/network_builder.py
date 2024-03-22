@@ -3,16 +3,19 @@ from rl_games.algos_torch import torch_ext
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 
-import math
+import pandas as pd
 import numpy as np
+
 from rl_games.algos_torch.d2rl import D2RLNet
 from rl_games.algos_torch.sac_helper import  SquashedNormal
 from rl_games.common.layers.recurrent import  GRUWithDones, LSTMWithDones
+from rl_games.common.io import append_df_to_csv_with_check
 
 from collections import OrderedDict
+
+import os
+import time
 
 def _create_initializer(func, **kwargs):
     return lambda v : func(v, **kwargs)
@@ -296,10 +299,13 @@ class A2CBuilder(NetworkBuilder):
                 print(l)
                 self.fhooks.append(getattr(self,l).register_forward_hook(self.forward_hook(l)))
 
+
+
         def forward_hook(self, layer_name):
             def hook(module, input, output):
                 self.selected_out[layer_name] = output
             return hook
+
 
         def forward(self, obs_dict, override_dict):
             
@@ -451,6 +457,7 @@ class A2CBuilder(NetworkBuilder):
 
             else:
 
+                self.a_rnn.train()
                 with torch.enable_grad():
                     
                     obs = obs_dict['obs']
@@ -638,7 +645,7 @@ class A2CBuilder(NetworkBuilder):
                             else:
                                 sigma = self.sigma_act(self.sigma(a_out))
 
-                            # if not override_flag:
+                            if not override_flag:
 
                                 ### del(actions)/del(cx_specific)
                                 # mu.backward(torch.ones_like(mu))
@@ -647,36 +654,35 @@ class A2CBuilder(NetworkBuilder):
                                 mu[:,9].backward(torch.ones_like(mu[:,9]))
 
                                 # obs
-                                with open('/home/gene/Pictures/h_obs.csv', "a") as file:
-                                    # Append the NumPy array as a new row in the CSV file
-                                    np.savetxt(file, a_out1.detach().cpu().numpy(), delimiter=',', fmt='%f')
-                                with open('/home/gene/Pictures/h_obs_grad.csv', "a") as file:
-                                    # Append the NumPy array as a new row in the CSV file
-                                    np.savetxt(file, a_out1.grad.detach().cpu().numpy(), delimiter=',', fmt='%f')
+                                if obs_dict['export_path']:
+                                
+                                    df_obs = pd.DataFrame(a_out1.grad.detach().cpu())
+                                    obs_filepath = os.path.join(obs_dict['export_path'], "obs.csv")
+                                    append_df_to_csv_with_check(df_obs, obs_filepath, time_threshold=20)
 
-                                # hn_in
-                                with open('/home/gene/Pictures/hn_in.csv', "a") as file:
-                                    # Append the NumPy array as a new row in the CSV file
-                                    np.savetxt(file, a_states[0][0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
-                                with open('/home/gene/Pictures/hn_in_grad.csv', "a") as file:
-                                    # Append the NumPy array as a new row in the CSV file
-                                    np.savetxt(file, a_states[0].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+                                    df_hn_in = pd.DataFrame(a_states[0][0,:,:].detach().cpu())
+                                    hn_in_filepath = os.path.join(obs_dict['export_path'], "hn_in.csv")
+                                    append_df_to_csv_with_check(df_hn_in, hn_in_filepath, time_threshold=20)
 
-                                # cn_in
-                                with open('/home/gene/Pictures/cn_in.csv', "a") as file:
-                                    # Append the NumPy array as a new row in the CSV file
-                                    np.savetxt(file, a_states[1][0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
-                                with open('/home/gene/Pictures/cn_in_grad.csv', "a") as file:
-                                    # Append the NumPy array as a new row in the CSV file
-                                    np.savetxt(file, a_states[1].grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+                                    df_hn_in_grad = pd.DataFrame(a_states[0].grad[0,:,:].detach().cpu())
+                                    hn_in_grad_filepath = os.path.join(obs_dict['export_path'], "hn_in_grad.csv")
+                                    append_df_to_csv_with_check(df_hn_in_grad, hn_in_grad_filepath, time_threshold=20)
 
-                                # hc_out
-                                with open('/home/gene/Pictures/hc_out.csv', "a") as file:
-                                    # Append the NumPy array as a new row in the CSV file
-                                    np.savetxt(file, a_out_temp4[0,:,:].detach().cpu().numpy(), delimiter=',', fmt='%f')
-                                with open('/home/gene/Pictures/hc_out_grad.csv', "a") as file:
-                                    # Append the NumPy array as a new row in the CSV file
-                                    np.savetxt(file, a_out_temp4.grad[0,:,:].cpu().numpy(), delimiter=',', fmt='%f')
+                                    df_cn_in = pd.DataFrame(a_states[1][0,:,:].detach().cpu())
+                                    cn_in_filepath = os.path.join(obs_dict['export_path'], "cn_in.csv")
+                                    append_df_to_csv_with_check(df_cn_in, cn_in_filepath, time_threshold=20)
+
+                                    df_cn_in_grad = pd.DataFrame(a_states[1].grad[0,:,:].detach().cpu())
+                                    cn_in_grad_filepath = os.path.join(obs_dict['export_path'], "cn_in_grad.csv")
+                                    append_df_to_csv_with_check(df_cn_in_grad, cn_in_grad_filepath, time_threshold=20)
+
+                                    df_hn_out = pd.DataFrame(a_out_temp4[0,:,:].detach().cpu())
+                                    hn_out_filepath = os.path.join(obs_dict['export_path'], "hn_out.csv")
+                                    append_df_to_csv_with_check(df_hn_out, hn_out_filepath, time_threshold=20)
+
+                                    df_hn_out_grad = pd.DataFrame(a_out_temp4.grad[0,:,:].detach().cpu())
+                                    hn_out_grad_filepath = os.path.join(obs_dict['export_path'], "hn_out_grad.csv")
+                                    append_df_to_csv_with_check(df_hn_out_grad, hn_out_grad_filepath, time_threshold=20)
 
                                 a_out1.grad.zero_()
                                 a_states[0].grad.zero_()
