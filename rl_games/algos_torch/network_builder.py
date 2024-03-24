@@ -656,9 +656,13 @@ class A2CBuilder(NetworkBuilder):
                                 # obs
                                 if obs_dict['export_path']:
                                 
-                                    df_obs = pd.DataFrame(a_out1.grad.detach().cpu())
+                                    df_obs = pd.DataFrame(a_out1.detach().cpu())
                                     obs_filepath = os.path.join(obs_dict['export_path'], "obs.csv")
                                     append_df_to_csv_with_check(df_obs, obs_filepath, time_threshold=20)
+                                
+                                    df_obs_grad = pd.DataFrame(a_out1.grad.detach().cpu())
+                                    obs_grad_filepath = os.path.join(obs_dict['export_path'], "obs_grad.csv")
+                                    append_df_to_csv_with_check(df_obs_grad, obs_grad_filepath, time_threshold=20)
 
                                     df_hn_in = pd.DataFrame(a_states[0][0,:,:].detach().cpu())
                                     hn_in_filepath = os.path.join(obs_dict['export_path'], "hn_in.csv")
