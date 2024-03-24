@@ -646,52 +646,87 @@ class A2CBuilder(NetworkBuilder):
                                 sigma = self.sigma_act(self.sigma(a_out))
 
                             if not override_flag:
-
-                                ### del(actions)/del(cx_specific)
-                                # mu.backward(torch.ones_like(mu))
-
-                                ### del(action_RHhip)/del(obs,hc_in,hc_out)
-                                mu[:,9].backward(torch.ones_like(mu[:,9]))
-
-                                # obs
+                                
                                 if obs_dict['export_path']:
-                                
-                                    df_obs = pd.DataFrame(a_out1.detach().cpu())
-                                    obs_filepath = os.path.join(obs_dict['export_path'], "obs.csv")
-                                    append_df_to_csv_with_check(df_obs, obs_filepath, time_threshold=20)
-                                
-                                    df_obs_grad = pd.DataFrame(a_out1.grad.detach().cpu())
-                                    obs_grad_filepath = os.path.join(obs_dict['export_path'], "obs_grad.csv")
-                                    append_df_to_csv_with_check(df_obs_grad, obs_grad_filepath, time_threshold=20)
 
-                                    df_hn_in = pd.DataFrame(a_states[0][0,:,:].detach().cpu())
-                                    hn_in_filepath = os.path.join(obs_dict['export_path'], "hn_in.csv")
-                                    append_df_to_csv_with_check(df_hn_in, hn_in_filepath, time_threshold=20)
+                                    # Placeholder tensors for concatenated gradients, initialized as empty tensors on the appropriate device
+                                    concatenated_gradients_a_out1 = torch.empty((1, 0)).to(mu.device)
+                                    concatenated_gradients_a_states_0 = torch.empty((1, 0)).to(mu.device)
+                                    concatenated_gradients_a_states_1 = torch.empty((1, 0)).to(mu.device)
+                                    concatenated_gradients_a_out_temp4 = torch.empty((1, 0)).to(mu.device)
 
-                                    df_hn_in_grad = pd.DataFrame(a_states[0].grad[0,:,:].detach().cpu())
-                                    hn_in_grad_filepath = os.path.join(obs_dict['export_path'], "hn_in_grad.csv")
-                                    append_df_to_csv_with_check(df_hn_in_grad, hn_in_grad_filepath, time_threshold=20)
+                                    # Loop over each actuator
+                                    for i in range(mu.shape[1]):  # Assuming mu has shape [number_of_samples, 12] for 12 actuators
+                                        # Zero out gradients for all tensors and model parameters at the start of each loop iteration
+                                        self.a_rnn.zero_grad()
+                                        if a_out1.grad is not None:
+                                            a_out1.grad.zero_()
+                                        if a_states[0].grad is not None:
+                                            a_states[0].grad.zero_()
+                                        if a_states[1].grad is not None:
+                                            a_states[1].grad.zero_()
+                                        if a_out_temp4.grad is not None:
+                                            a_out_temp4.grad.zero_()
 
-                                    df_cn_in = pd.DataFrame(a_states[1][0,:,:].detach().cpu())
-                                    cn_in_filepath = os.path.join(obs_dict['export_path'], "cn_in.csv")
-                                    append_df_to_csv_with_check(df_cn_in, cn_in_filepath, time_threshold=20)
+                                        # Perform backward pass for the current actuator
+                                        actuator_output = mu[:, i]
+                                        actuator_output.backward(torch.ones_like(actuator_output), retain_graph=True if i < mu.shape[1] - 1 else False)
 
-                                    df_cn_in_grad = pd.DataFrame(a_states[1].grad[0,:,:].detach().cpu())
-                                    cn_in_grad_filepath = os.path.join(obs_dict['export_path'], "cn_in_grad.csv")
-                                    append_df_to_csv_with_check(df_cn_in_grad, cn_in_grad_filepath, time_threshold=20)
+                                        # Concatenate gradients for each tensor of interest
+                                        if a_out1.grad is not None:
+                                            concatenated_gradients_a_out1 = torch.cat((concatenated_gradients_a_out1, a_out1.grad.view(1, -1)), 1)
+                                        if a_states[0].grad is not None:
+                                            concatenated_gradients_a_states_0 = torch.cat((concatenated_gradients_a_states_0, a_states[0].grad.view(1, -1)), 1)
+                                        if a_states[1].grad is not None:
+                                            concatenated_gradients_a_states_1 = torch.cat((concatenated_gradients_a_states_1, a_states[1].grad.view(1, -1)), 1)
+                                        if a_out_temp4.grad is not None:
+                                            concatenated_gradients_a_out_temp4 = torch.cat((concatenated_gradients_a_out_temp4, a_out_temp4.grad.view(1, -1)), 1)
 
-                                    df_hn_out = pd.DataFrame(a_out_temp4[0,:,:].detach().cpu())
-                                    hn_out_filepath = os.path.join(obs_dict['export_path'], "hn_out.csv")
-                                    append_df_to_csv_with_check(df_hn_out, hn_out_filepath, time_threshold=20)
+                                    # Now each 'concatenated_gradients_*' tensor holds the concatenated gradients for the respective tensor for all 12 actuators in shape (1, 12N)
 
-                                    df_hn_out_grad = pd.DataFrame(a_out_temp4.grad[0,:,:].detach().cpu())
-                                    hn_out_grad_filepath = os.path.join(obs_dict['export_path'], "hn_out_grad.csv")
-                                    append_df_to_csv_with_check(df_hn_out_grad, hn_out_grad_filepath, time_threshold=20)
 
-                                a_out1.grad.zero_()
-                                a_states[0].grad.zero_()
-                                a_states[1].grad.zero_()
-                                a_out_temp4.grad.zero_()
+                                    # Export gradients for all actuators
+                                    if obs_dict['export_path']:
+
+                                        # Export OBS gradients
+                                        df_obs_grad = pd.DataFrame(concatenated_gradients_a_out1.detach().cpu())
+                                        obs_grad_filepath = os.path.join(obs_dict['export_path'], "obs_grad.csv")
+                                        append_df_to_csv_with_check(df_obs_grad, obs_grad_filepath, time_threshold=20)
+
+                                        # Export HN_IN gradients
+                                        df_hn_in_grad = pd.DataFrame(concatenated_gradients_a_states_0.detach().cpu())
+                                        hn_in_grad_filepath = os.path.join(obs_dict['export_path'], "hn_in_grad.csv")
+                                        append_df_to_csv_with_check(df_hn_in_grad, hn_in_grad_filepath, time_threshold=20)
+
+                                        # Export CN_IN gradients
+                                        df_cn_in_grad = pd.DataFrame(concatenated_gradients_a_states_1.detach().cpu())
+                                        cn_in_grad_filepath = os.path.join(obs_dict['export_path'], "cn_in_grad.csv")
+                                        append_df_to_csv_with_check(df_cn_in_grad, cn_in_grad_filepath, time_threshold=20)
+
+                                        # Export HN_OUT gradients
+                                        df_hn_out_grad = pd.DataFrame(concatenated_gradients_a_out_temp4.detach().cpu())
+                                        hn_out_grad_filepath = os.path.join(obs_dict['export_path'], "hn_out_grad.csv")
+                                        append_df_to_csv_with_check(df_hn_out_grad, hn_out_grad_filepath, time_threshold=20)
+
+                                        df_obs = pd.DataFrame(a_out1.detach().cpu())
+                                        obs_filepath = os.path.join(obs_dict['export_path'], "obs.csv")
+                                        append_df_to_csv_with_check(df_obs, obs_filepath, time_threshold=20)
+                                    
+
+                                        df_hn_in = pd.DataFrame(a_states[0][0,:,:].detach().cpu())
+                                        hn_in_filepath = os.path.join(obs_dict['export_path'], "hn_in.csv")
+                                        append_df_to_csv_with_check(df_hn_in, hn_in_filepath, time_threshold=20)
+
+
+                                        df_cn_in = pd.DataFrame(a_states[1][0,:,:].detach().cpu())
+                                        cn_in_filepath = os.path.join(obs_dict['export_path'], "cn_in.csv")
+                                        append_df_to_csv_with_check(df_cn_in, cn_in_filepath, time_threshold=20)
+
+
+                                        df_hn_out = pd.DataFrame(a_out_temp4[0,:,:].detach().cpu())
+                                        hn_out_filepath = os.path.join(obs_dict['export_path'], "hn_out.csv")
+                                        append_df_to_csv_with_check(df_hn_out, hn_out_filepath, time_threshold=20)
+
                             return mu, sigma, value, states_out, self.selected_out
 
                     else:

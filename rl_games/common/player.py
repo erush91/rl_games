@@ -327,6 +327,12 @@ class BasePlayer(object):
             for key, value in tensor_specs.items():
                 if key == 'ACT':  # Add 'FT_FORCE' after 'ACT'
                     new_tensor_specs['FT_FORCE'] = 4
+                    new_tensor_specs['FT_X'] = 4
+                    new_tensor_specs['FT_Y'] = 4
+                    new_tensor_specs['FT_Z'] = 4
+                    new_tensor_specs['COM_X'] = 1
+                    new_tensor_specs['COM_Y'] = 1
+                    new_tensor_specs['COM_Z'] = 1
                     new_tensor_specs['PERTURB_BEGIN'] = 1
                     new_tensor_specs['PERTURB'] = 1
                     new_tensor_specs['STANCE_BEGIN'] = 1
@@ -838,6 +844,12 @@ class BasePlayer(object):
 
                     if self.env.cfg['name'] == 'AnymalTerrain' or self.env.cfg['name'] == 'A1Terrain':
                         tensor_dict['FT_FORCE']['data'][t,:,:] = info['foot_forces']
+                        tensor_dict['FT_X']['data'][t,:,:] = info['foot_location_x']
+                        tensor_dict['FT_Y']['data'][t,:,:] = info['foot_location_y']
+                        tensor_dict['FT_Z']['data'][t,:,:] = info['foot_location_z']
+                        tensor_dict['COM_X']['data'][t,:,:] = info['com_location_x']
+                        tensor_dict['COM_Y']['data'][t,:,:] = info['com_location_y']
+                        tensor_dict['COM_Z']['data'][t,:,:] = info['com_location_z']
                         tensor_dict['PERTURB_BEGIN']['data'][t,:,:] = info['perturb_begin'].view(-1, 1)
                         tensor_dict['PERTURB']['data'][t,:,:] = info['perturb'].view(-1, 1)
                         tensor_dict['STANCE_BEGIN']['data'][t,:,:] = info['stance_begin'].view(-1, 1)
