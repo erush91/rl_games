@@ -355,7 +355,7 @@ class BasePlayer(object):
                     tensor_data = torch.from_numpy(arr3d)
 
                     # assign to your dictionary
-                    tensor_dict[key] = {'data': tensor_data, 'cols': [key]}
+                    tensor_dict[key] = {'data': tensor_data, 'cols': [key + '_RAW']}
                     
                 elif key == 'ENV':
                     # Create an array with a sequence of numbers repeated over rows
@@ -366,9 +366,9 @@ class BasePlayer(object):
                     tensor_data = torch.from_numpy(arr3d)
 
                     # assign to your dictionary
-                    tensor_dict[key] = {'data': tensor_data, 'cols': [key]}
+                    tensor_dict[key] = {'data': tensor_data, 'cols': [key + '_RAW']}
                 elif dim == 1:
-                    tensor_dict[key] = {'data': torch.zeros((N_STEPS, N_ENVS, dim)), 'cols': [key]}
+                    tensor_dict[key] = {'data': torch.zeros((N_STEPS, N_ENVS, dim)), 'cols': [key + '_RAW']}
                 else:
                     tensor_dict[key] = {'data': torch.zeros((N_STEPS, N_ENVS, dim)), 'cols': np.char.mod('%s_RAW_%%03d' % key, np.arange(dim))}
             return tensor_dict
@@ -847,9 +847,9 @@ class BasePlayer(object):
                         tensor_dict['FT_X']['data'][t,:,:] = info['foot_location_x']
                         tensor_dict['FT_Y']['data'][t,:,:] = info['foot_location_y']
                         tensor_dict['FT_Z']['data'][t,:,:] = info['foot_location_z']
-                        tensor_dict['COM_X']['data'][t,:,:] = info['com_location_x']
-                        tensor_dict['COM_Y']['data'][t,:,:] = info['com_location_y']
-                        tensor_dict['COM_Z']['data'][t,:,:] = info['com_location_z']
+                        tensor_dict['COM_X']['data'][t,:,:] = info['com_location_x'].view(-1, 1)
+                        tensor_dict['COM_Y']['data'][t,:,:] = info['com_location_y'].view(-1, 1)
+                        tensor_dict['COM_Z']['data'][t,:,:] = info['com_location_z'].view(-1, 1)
                         tensor_dict['PERTURB_BEGIN']['data'][t,:,:] = info['perturb_begin'].view(-1, 1)
                         tensor_dict['PERTURB']['data'][t,:,:] = info['perturb'].view(-1, 1)
                         tensor_dict['STANCE_BEGIN']['data'][t,:,:] = info['stance_begin'].view(-1, 1)
