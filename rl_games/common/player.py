@@ -851,7 +851,7 @@ class BasePlayer(object):
                         tensor_dict['COM_X']['data'][t,:,:] = info['com_location_x'].view(-1, 1)
                         tensor_dict['COM_Y']['data'][t,:,:] = info['com_location_y'].view(-1, 1)
                         tensor_dict['COM_Z']['data'][t,:,:] = info['com_location_z'].view(-1, 1)
-                        tensor_dict['COM_YAW']['data'][t,:,:] = info['com_heading'].view(-1, 1)
+                        tensor_dict['COM_YAW']['data'][t,:,:] = info['com_yaw'].view(-1, 1)
                         tensor_dict['PERTURB_BEGIN']['data'][t,:,:] = info['perturb_begin'].view(-1, 1)
                         tensor_dict['PERTURB']['data'][t,:,:] = info['perturb'].view(-1, 1)
                         tensor_dict['STANCE_BEGIN']['data'][t,:,:] = info['stance_begin'].view(-1, 1)
